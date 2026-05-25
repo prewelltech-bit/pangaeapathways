@@ -2,11 +2,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../lib/AuthContext';
-import { 
-  Mail, Phone, Briefcase, FileText, Activity, MapPin, 
-  Edit2, Check, X, Search, Plus, Calendar, User, Users, 
-  Info, HelpCircle, DollarSign, Calculator, Lock, Trash2, 
-  ArrowLeft, ArrowUpRight, Share2, UploadCloud, FileDown, 
+import {
+  Mail, Phone, Briefcase, FileText, Activity, MapPin,
+  Edit2, Check, X, Search, Plus, Calendar, User, Users,
+  Info, HelpCircle, DollarSign, Calculator, Lock, Trash2,
+  ArrowLeft, ArrowUpRight, Share2, UploadCloud, FileDown,
   Download, Award, GraduationCap, Folder, MessageSquare, Clock
 } from 'lucide-react';
 import FollowUpModal from '../components/FollowUpModal';
@@ -40,7 +40,7 @@ export default function LeadDetail() {
   // Inline editing state
   const [editingField, setEditingField] = useState(null); // name of field being edited
   const [tempValue, setTempValue] = useState('');
-  
+
   // Secondary Applicant editing block
   const [editingSecondary, setEditingSecondary] = useState(false);
   const [secondaryFormData, setSecondaryFormData] = useState({
@@ -184,14 +184,14 @@ export default function LeadDetail() {
       };
       await axios.post('/api/finance/invoices', payload);
       alert('Invoice created successfully!');
-      
+
       // Reset form
       setInvoiceDueDate('');
       setInvoiceCurrency('INR');
       setInvoiceNotes('');
       setInvoiceLines([{ description: '', quantity: 1, unitExGst: 0, gstRatePct: 18 }]);
       setShowInvoiceModal(false);
-      
+
       // Refresh invoices
       const invoicesRes = await axios.get(`/api/finance/invoices/lead/${id}`);
       setInvoices(invoicesRes.data);
@@ -236,7 +236,7 @@ export default function LeadDetail() {
       await axios.post(`/api/finance/invoices/${activeInvoiceForPayment._id}/payments`, payload);
       alert('Payment recorded successfully!');
       setShowPaymentModal(false);
-      
+
       // Refresh invoices
       const invoicesRes = await axios.get(`/api/finance/invoices/lead/${id}`);
       setInvoices(invoicesRes.data);
@@ -334,14 +334,14 @@ export default function LeadDetail() {
         targetCountry: caseTargetCountry,
         productLine: caseProductLine
       };
-      
+
       await axios.post('/api/immigration/cases', payload);
       alert('Case created successfully!');
-      
+
       // Reload cases list
       const casesRes = await axios.get(`/api/cases/lead/${id}`);
       setCases(casesRes.data);
-      
+
       setIsCreateCaseModalOpen(false);
     } catch (err) {
       console.error(err);
@@ -371,7 +371,7 @@ export default function LeadDetail() {
   const saveEditField = async (fieldName) => {
     try {
       let patchPayload = { [fieldName]: tempValue };
-      
+
       // Keep fullName synced if editing firstName or lastName
       if (fieldName === 'firstName') {
         patchPayload.fullName = `${tempValue} ${lead.lastName || ''}`.trim();
@@ -550,14 +550,14 @@ export default function LeadDetail() {
   if (loading) return <div className="p-8 text-center text-sky-800">Loading Lead Profiles...</div>;
   if (!lead) return <div className="p-8 text-red-500 text-center font-bold">Lead profile not found</div>;
 
-  const filteredNotes = notes.filter(n => 
+  const filteredNotes = notes.filter(n =>
     n.body?.toLowerCase().includes(notesSearchQuery.toLowerCase()) ||
     n.creatorName?.toLowerCase().includes(notesSearchQuery.toLowerCase())
   );
 
   return (
     <div className="space-y-6">
-      
+
       {/* ─── Breadcrumb & Top Controls ────────────────────────────────────────── */}
       <div className="flex items-center justify-between border-b pb-4 border-slate-200">
         <button onClick={() => navigate('/leads')} className="flex items-center text-sm font-semibold text-slate-500 hover:text-sky-800 transition-colors">
@@ -583,7 +583,7 @@ export default function LeadDetail() {
                 {lead.preferredVisa || lead.productLine || 'Visa'}
               </span>
             </div>
-            
+
             <div className="text-xs text-slate-500 font-bold mt-1 text-indigo-700/80">
               LEAD ID: {id.substring(id.length - 8).toUpperCase()}
             </div>
@@ -607,8 +607,8 @@ export default function LeadDetail() {
 
         {/* Top Right Action & Service Selector */}
         <div className="flex items-center space-x-3 self-end md:self-center">
-          <select 
-            value={lead.productLine || 'CANADA'} 
+          <select
+            value={lead.productLine || 'CANADA'}
             onChange={(e) => handleServiceChange(e.target.value)}
             className="text-xs font-bold py-2 px-3 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
@@ -619,17 +619,17 @@ export default function LeadDetail() {
             <option value="AUSTRALIA">Australia Student Visa</option>
             <option value="OTHER">Other Visa Service</option>
           </select>
-          
-          <button 
-            onClick={() => setShowAddNoteModal(true)} 
+
+          <button
+            onClick={() => setShowAddNoteModal(true)}
             className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-700 shadow-sm transition-all"
             title="Create File Note"
           >
             <Plus className="w-4 h-4" />
           </button>
-          
-          <button 
-            onClick={() => navigate('/leads')} 
+
+          <button
+            onClick={() => navigate('/leads')}
             className="w-8 h-8 rounded-lg border border-slate-300 bg-white text-slate-600 flex items-center justify-center hover:bg-slate-50 shadow-sm transition-all"
             title="Close"
           >
@@ -642,15 +642,15 @@ export default function LeadDetail() {
       <div className="border-b border-slate-200 overflow-x-auto flex space-x-1">
         {[
           { id: 'client-info', label: 'Client Info', icon: User },
-          { id: 'assessment-info', label: 'Assessment Info', icon: GraduationCap },
+          // { id: 'assessment-info', label: 'Assessment Info', icon: GraduationCap },
           { id: 'process', label: 'Case Pipeline', icon: Activity },
           { id: 'file-notes', label: 'File Notes', icon: FileText },
-          { id: 'documents', label: 'Documents', icon: Folder },
+          // { id: 'documents', label: 'Documents', icon: Folder },
           { id: 'accounts', label: 'Accounts', icon: DollarSign },
-          { id: 'communication', label: 'Communication', icon: MessageSquare },
-          { id: 'summary', label: 'Summary', icon: Info },
+          // { id: 'communication', label: 'Communication', icon: MessageSquare },
+          // { id: 'summary', label: 'Summary', icon: Info },
           { id: 'follow-up', label: 'Follow up', icon: Clock },
-          { id: 'visits', label: 'Visits', icon: MapPin }
+          // { id: 'visits', label: 'Visits', icon: MapPin }
         ].map(tab => {
           const IconComp = tab.icon;
           const isActive = activeTab === tab.id;
@@ -658,11 +658,10 @@ export default function LeadDetail() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`py-3 px-4 text-xs font-bold border-b-2 whitespace-nowrap transition-all flex items-center space-x-1.5 ${
-                isActive 
-                  ? 'border-purple-600 text-purple-700 bg-purple-50/20' 
-                  : 'border-transparent text-slate-550 hover:text-slate-800'
-              }`}
+              className={`py-3 px-4 text-xs font-bold border-b-2 whitespace-nowrap transition-all flex items-center space-x-1.5 ${isActive
+                ? 'border-purple-600 text-purple-700 bg-purple-50/20'
+                : 'border-transparent text-slate-550 hover:text-slate-800'
+                }`}
             >
               <IconComp className={`w-4 h-4 ${isActive ? 'text-purple-600' : 'text-slate-400'}`} />
               <span>{tab.label}</span>
@@ -673,11 +672,11 @@ export default function LeadDetail() {
 
       {/* ─── TAB CONTENT PANELS ────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
-        
+
         {/* ================= TAB 1: CLIENT INFO ================= */}
         {activeTab === 'client-info' && (
           <div className="space-y-8 animate-fade-in">
-            
+
             {/* Section A: Personal Information */}
             <div>
               <div className="flex items-center space-x-2 border-b pb-2 mb-4">
@@ -690,21 +689,21 @@ export default function LeadDetail() {
                   { key: 'firstName', label: 'First Name', type: 'text', val: lead.firstName },
                   { key: 'lastName', label: 'Last Name', type: 'text', val: lead.lastName },
                   { key: 'dateOfBirth', label: 'Date of Birth', type: 'date', val: lead.dateOfBirth },
-                  { 
-                    key: 'gender', 
-                    label: 'Gender', 
-                    type: 'select', 
-                    options: ['Male', 'Female', 'Other'], 
-                    val: lead.gender 
+                  {
+                    key: 'gender',
+                    label: 'Gender',
+                    type: 'select',
+                    options: ['Male', 'Female', 'Other'],
+                    val: lead.gender
                   },
-                  { 
-                    key: 'maritalStatus', 
-                    label: 'Marital Status', 
-                    type: 'select', 
-                    options: ['Never Married', 'Married', 'Divorced', 'Widowed'], 
-                    val: lead.maritalStatus 
+                  {
+                    key: 'maritalStatus',
+                    label: 'Marital Status',
+                    type: 'select',
+                    options: ['Never Married', 'Married', 'Divorced', 'Widowed'],
+                    val: lead.maritalStatus
                   },
-                  { key: 'visaExpiryDate', label: 'Visa Expiry Date', type: 'date', val: lead.visaExpiryDate },
+                  // { kxey: 'visaExpiryDate', label: 'Visa Expiry Date', type: 'date', val: lead.visaExpiryDate },
                   { key: 'passportNumber', label: 'Passport Number', type: 'text', val: lead.passportNumber }
                 ].map(field => {
                   const isEditing = editingField === field.key;
@@ -715,8 +714,8 @@ export default function LeadDetail() {
                         {isEditing ? (
                           <div className="flex items-center w-full space-x-2">
                             {field.type === 'select' ? (
-                              <select 
-                                value={tempValue} 
+                              <select
+                                value={tempValue}
                                 onChange={e => setTempValue(e.target.value)}
                                 className="text-sm bg-white border border-slate-300 rounded px-2 py-1 w-full focus:outline-none focus:ring-1 focus:ring-indigo-500"
                               >
@@ -724,7 +723,7 @@ export default function LeadDetail() {
                                 {field.options.map(o => <option key={o} value={o}>{o}</option>)}
                               </select>
                             ) : (
-                              <input 
+                              <input
                                 type={field.type}
                                 value={tempValue}
                                 onChange={e => setTempValue(e.target.value)}
@@ -744,7 +743,7 @@ export default function LeadDetail() {
                               {field.val || <em className="text-slate-400 font-normal">Not provided</em>}
                             </span>
                             {canEditLeads && (
-                              <button 
+                              <button
                                 onClick={() => startEditField(field.key, field.val)}
                                 className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
                               >
@@ -789,7 +788,7 @@ export default function LeadDetail() {
                       <div className="mt-1 flex items-center justify-between min-h-[36px]">
                         {isEditing ? (
                           <div className="flex items-center w-full space-x-2">
-                            <input 
+                            <input
                               type="text"
                               value={tempValue}
                               onChange={e => setTempValue(e.target.value)}
@@ -808,7 +807,7 @@ export default function LeadDetail() {
                               {field.val || <em className="text-slate-400 font-normal">Not provided</em>}
                             </span>
                             {canEditLeads && (
-                              <button 
+                              <button
                                 onClick={() => startEditField(field.key, field.val)}
                                 className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
                               >
@@ -832,8 +831,8 @@ export default function LeadDetail() {
                   <h3 className="text-md font-extrabold text-slate-800 tracking-tight">Secondary Applicant</h3>
                 </div>
                 {!editingSecondary && canEditLeads && (
-                  <button 
-                    onClick={() => setEditingSecondary(true)} 
+                  <button
+                    onClick={() => setEditingSecondary(true)}
                     className="flex items-center text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-white border border-slate-200 hover:bg-slate-50 py-1.5 px-3 rounded-lg shadow-sm"
                   >
                     <Plus className="w-3.5 h-3.5 mr-1" /> Add/Edit Details
@@ -845,7 +844,7 @@ export default function LeadDetail() {
                 <form onSubmit={saveSecondaryApplicant} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">Relationship</label>
-                    <select 
+                    <select
                       value={secondaryFormData.secondaryRelationship}
                       onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryRelationship: e.target.value })}
                       className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -859,36 +858,36 @@ export default function LeadDetail() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">First Name</label>
-                    <input 
-                      type="text" 
-                      value={secondaryFormData.secondaryFirstName} 
+                    <input
+                      type="text"
+                      value={secondaryFormData.secondaryFirstName}
                       onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryFirstName: e.target.value })}
                       className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">Last Name</label>
-                    <input 
-                      type="text" 
-                      value={secondaryFormData.secondaryLastName} 
+                    <input
+                      type="text"
+                      value={secondaryFormData.secondaryLastName}
                       onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryLastName: e.target.value })}
                       className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">Date of Birth</label>
-                    <input 
-                      type="date" 
-                      value={secondaryFormData.secondaryDob} 
+                    <input
+                      type="date"
+                      value={secondaryFormData.secondaryDob}
                       onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryDob: e.target.value })}
                       className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">Passport Number</label>
-                    <input 
-                      type="text" 
-                      value={secondaryFormData.secondaryPassport} 
+                    <input
+                      type="text"
+                      value={secondaryFormData.secondaryPassport}
                       onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryPassport: e.target.value })}
                       className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
@@ -896,8 +895,8 @@ export default function LeadDetail() {
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">Phone Number</label>
                     <div className="flex space-x-2">
-                      <select 
-                        value={secondaryFormData.secondaryContactCode} 
+                      <select
+                        value={secondaryFormData.secondaryContactCode}
                         onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryContactCode: e.target.value })}
                         className="text-sm bg-white border border-slate-300 rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-20"
                       >
@@ -905,9 +904,9 @@ export default function LeadDetail() {
                         <option value="+61">+61</option>
                         <option value="+1">+1</option>
                       </select>
-                      <input 
-                        type="text" 
-                        value={secondaryFormData.secondaryContactNumber} 
+                      <input
+                        type="text"
+                        value={secondaryFormData.secondaryContactNumber}
                         onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryContactNumber: e.target.value })}
                         className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       />
@@ -915,32 +914,32 @@ export default function LeadDetail() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">Email Address</label>
-                    <input 
-                      type="email" 
-                      value={secondaryFormData.secondaryEmail} 
+                    <input
+                      type="email"
+                      value={secondaryFormData.secondaryEmail}
                       onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryEmail: e.target.value })}
                       className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-slate-500 mb-1">Permanent Address</label>
-                    <input 
-                      type="text" 
-                      value={secondaryFormData.secondaryAddress} 
+                    <input
+                      type="text"
+                      value={secondaryFormData.secondaryAddress}
                       onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryAddress: e.target.value })}
                       className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
                   <div className="md:col-span-3 flex justify-end space-x-3 mt-4">
-                    <button 
-                      type="button" 
-                      onClick={() => setEditingSecondary(false)} 
+                    <button
+                      type="button"
+                      onClick={() => setEditingSecondary(false)}
                       className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 text-xs font-bold"
                     >
                       Cancel
                     </button>
-                    <button 
-                      type="submit" 
+                    <button
+                      type="submit"
                       className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white text-xs font-bold shadow-sm"
                     >
                       Save Applicant
@@ -995,13 +994,13 @@ export default function LeadDetail() {
         )}
 
         {/* ================= TAB 2: ASSESSMENT INFO ================= */}
-        {activeTab === 'assessment-info' && (
+        {/* {activeTab === 'assessment-info' && (
           <div className="space-y-6">
             <div className="flex items-center space-x-2 border-b pb-2 mb-4">
               <Award className="w-5 h-5 text-indigo-600" />
               <h3 className="text-md font-extrabold text-slate-800 tracking-tight">Academic & Language Assessment</h3>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50 p-6 rounded-xl border border-slate-100">
               <div>
                 <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">Academic Qualifications</h4>
@@ -1040,7 +1039,7 @@ export default function LeadDetail() {
               </div>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* ================= TAB 3: PROCESS ================= */}
         {activeTab === 'process' && (
@@ -1050,7 +1049,7 @@ export default function LeadDetail() {
                 <Briefcase className="w-5 h-5 text-indigo-600" />
                 <h3 className="text-md font-extrabold text-slate-800 tracking-tight">Process & Cases pipeline</h3>
               </div>
-              <button 
+              <button
                 onClick={() => setIsCreateCaseModalOpen(true)}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-colors"
               >
@@ -1085,23 +1084,23 @@ export default function LeadDetail() {
         {/* ================= TAB 4: FILE NOTES (Pic 3 & 4 style) ================= */}
         {activeTab === 'file-notes' && (
           <div className="space-y-6 animate-fade-in">
-            
+
             {/* Header controls (search & + note) */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
               <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">FILE NOTES</h3>
               <div className="flex items-center space-x-3 w-full sm:w-auto">
                 <div className="relative w-full sm:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="Search File Notes..."
                     value={notesSearchQuery}
                     onChange={e => setNotesSearchQuery(e.target.value)}
                     className="pl-9 pr-3 py-2 w-full text-sm bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
-                <button 
-                  onClick={() => setShowAddNoteModal(true)} 
+                <button
+                  onClick={() => setShowAddNoteModal(true)}
                   className="flex items-center justify-center p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm transition-all"
                   title="Add Note"
                 >
@@ -1113,7 +1112,7 @@ export default function LeadDetail() {
             {/* List notes */}
             {filteredNotes.length === 0 ? (
               <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
-                
+
                 {/* Visual empty illustration (Pic 3 style) */}
                 <div className="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200">
                   <FileText className="w-12 h-12 text-slate-400" />
@@ -1145,7 +1144,7 @@ export default function LeadDetail() {
               </div>
             ) : (
               <div className="space-y-6">
-                
+
                 {/* Notes List */}
                 {filteredNotes.map(note => (
                   <div key={note._id} className="border border-slate-200 rounded-xl p-5 bg-slate-50/20 shadow-sm relative hover:border-slate-300 transition-all">
@@ -1159,8 +1158,8 @@ export default function LeadDetail() {
                       </div>
                     </div>
 
-                    <div 
-                      className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed prose prose-sm max-w-none" 
+                    <div
+                      className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed prose prose-sm max-w-none"
                       dangerouslySetInnerHTML={{ __html: note.body }}
                     />
 
@@ -1171,7 +1170,7 @@ export default function LeadDetail() {
                         <span className="text-xs font-bold text-indigo-900 truncate max-w-[200px]" title={note.attachment.filename}>
                           {note.attachment.filename}
                         </span>
-                        <a 
+                        <a
                           href={`/api/leads/notes/download/${note._id}`}
                           target="_blank"
                           rel="noreferrer"
@@ -1196,7 +1195,7 @@ export default function LeadDetail() {
                     </div>
                   </div>
                 ))}
-                
+
                 {/* Mini Calculator deck always visible under note list */}
                 <div className="border-t pt-6">
                   <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-3">Immigration Calculators</h4>
@@ -1219,7 +1218,7 @@ export default function LeadDetail() {
         )}
 
         {/* ================= TAB 5: DOCUMENTS ================= */}
-        {activeTab === 'documents' && (
+        {/* {activeTab === 'documents' && (
           <div className="space-y-6">
             <div className="flex items-center space-x-2 border-b pb-2 mb-4">
               <FileText className="w-5 h-5 text-indigo-600" />
@@ -1247,18 +1246,18 @@ export default function LeadDetail() {
                           <li key={doc._id} className="flex items-center justify-between group p-1.5 hover:bg-white rounded border border-transparent hover:border-slate-100">
                             <div className="flex items-center overflow-hidden mr-2">
                               <FileText className="w-3.5 h-3.5 text-indigo-500 mr-2 flex-shrink-0" />
-                              <a 
-                                href={`/api/documents/download/${doc._id}`} 
-                                target="_blank" 
-                                rel="noreferrer" 
+                              <a
+                                href={`/api/documents/download/${doc._id}`}
+                                target="_blank"
+                                rel="noreferrer"
                                 className="text-xs font-semibold text-indigo-700 hover:underline truncate max-w-[200px]"
                                 title={doc.originalFileName}
                               >
                                 {doc.name || doc.originalFileName}
                               </a>
                             </div>
-                            <button 
-                              onClick={() => handleDeleteDoc(doc._id)} 
+                            <button
+                              onClick={() => handleDeleteDoc(doc._id)}
                               className="text-red-400 hover:text-red-600 p-0.5 hover:bg-red-50 rounded"
                             >
                               ✕
@@ -1272,7 +1271,7 @@ export default function LeadDetail() {
               })}
             </div>
           </div>
-        )}
+        )} */}
 
         {/* ================= TAB 6: ACCOUNTS ================= */}
         {activeTab === 'accounts' && (
@@ -1282,8 +1281,8 @@ export default function LeadDetail() {
               <span className="text-sm font-bold text-purple-800 flex items-center">
                 <DollarSign className="w-4 h-4 mr-1.5 text-purple-650" /> Invoice
               </span>
-              <button 
-                onClick={() => setShowInvoiceModal(true)} 
+              <button
+                onClick={() => setShowInvoiceModal(true)}
                 className="w-8 h-8 flex items-center justify-center bg-purple-600 hover:bg-purple-700 text-white rounded-md shadow transition-all font-bold text-lg"
                 title="Create Invoice"
               >
@@ -1294,7 +1293,7 @@ export default function LeadDetail() {
             {/* Financial Summary Cards */}
             {(() => {
               const activeInvoices = invoices.filter(inv => inv.status !== 'VOID');
-              
+
               // Group totals by currency
               const currencyTotals = {};
               activeInvoices.forEach(inv => {
@@ -1305,10 +1304,10 @@ export default function LeadDetail() {
                 currencyTotals[cur].invoiced += (inv.totalAmount || 0);
                 currencyTotals[cur].paid += (inv.paidAmount || 0);
               });
-              
+
               const curList = Object.keys(currencyTotals);
               if (curList.length === 0) return null;
-              
+
               return (
                 <div className="space-y-4 mb-6">
                   {curList.map(cur => {
@@ -1349,8 +1348,8 @@ export default function LeadDetail() {
             {invoices.length === 0 ? (
               <div className="bg-slate-50/50 p-6 rounded-xl border border-slate-100 flex flex-col items-center justify-center py-12">
                 <p className="text-sm font-semibold text-slate-500">No account ledger records or invoices exist for this lead.</p>
-                <button 
-                  onClick={() => setShowInvoiceModal(true)} 
+                <button
+                  onClick={() => setShowInvoiceModal(true)}
                   className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-xs font-bold shadow-sm"
                 >
                   + Create First Invoice
@@ -1372,11 +1371,11 @@ export default function LeadDetail() {
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-100">
                       {invoices.map(inv => {
-                        const statusColor = 
+                        const statusColor =
                           inv.status === 'PAID' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                          inv.status === 'PARTIAL' ? 'bg-amber-50 text-amber-705 border border-amber-200' :
-                          inv.status === 'VOID' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                          'bg-[#F1EEF9] text-[#7154B5] border border-[#E4DCF5]';
+                            inv.status === 'PARTIAL' ? 'bg-amber-50 text-amber-705 border border-amber-200' :
+                              inv.status === 'VOID' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                                'bg-[#F1EEF9] text-[#7154B5] border border-[#E4DCF5]';
 
                         const currencySymbol = inv.currency === 'INR' ? '₹' : (inv.currency || '$');
 
@@ -1408,21 +1407,21 @@ export default function LeadDetail() {
                               {inv.description}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium relative">
-                              <button 
+                              <button
                                 onClick={() => setOpenDropdownId(openDropdownId === inv._id ? null : inv._id)}
                                 className="text-slate-450 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-all focus:outline-none"
                               >
                                 <span className="text-lg font-bold select-none">⋮</span>
                               </button>
-                              
+
                               {openDropdownId === inv._id && (
                                 <>
                                   <div className="fixed inset-0 z-10" onClick={() => setOpenDropdownId(null)}></div>
                                   <div className="absolute right-6 mt-1 w-44 rounded-lg bg-white shadow-lg border border-slate-200 py-1 z-20 text-left">
-                                    <a 
-                                      href={`/api/finance/invoices/${inv._id}/pdf`} 
-                                      target="_blank" 
-                                      rel="noreferrer" 
+                                    <a
+                                      href={`/api/finance/invoices/${inv._id}/pdf`}
+                                      target="_blank"
+                                      rel="noreferrer"
                                       className="flex items-center px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
                                       onClick={() => setOpenDropdownId(null)}
                                     >
@@ -1461,7 +1460,7 @@ export default function LeadDetail() {
                     <h3 className="text-lg font-black text-slate-805 uppercase tracking-tight flex items-center">
                       <DollarSign className="w-5 h-5 mr-2 text-indigo-600" /> Create New Invoice
                     </h3>
-                    <button 
+                    <button
                       onClick={() => setShowInvoiceModal(false)}
                       className="p-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-600 transition-all"
                     >
@@ -1474,7 +1473,7 @@ export default function LeadDetail() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Due Date</label>
-                        <input 
+                        <input
                           type="date"
                           required
                           value={invoiceDueDate}
@@ -1484,9 +1483,9 @@ export default function LeadDetail() {
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Currency</label>
-                        <select 
-                          value={invoiceCurrency} 
-                          onChange={e => setInvoiceCurrency(e.target.value)} 
+                        <select
+                          value={invoiceCurrency}
+                          onChange={e => setInvoiceCurrency(e.target.value)}
                           className="w-full text-sm border border-slate-300 rounded-lg p-2.5 bg-white text-slate-805 focus:outline-none focus:ring-2 focus:ring-indigo-505"
                         >
                           <option value="INR">INR (₹)</option>
@@ -1503,8 +1502,8 @@ export default function LeadDetail() {
                     <div className="space-y-4">
                       <div className="flex justify-between items-center border-b pb-2">
                         <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Line Items</span>
-                        <button 
-                          type="button" 
+                        <button
+                          type="button"
                           onClick={handleAddInvoiceLine}
                           className="px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold rounded-lg hover:bg-indigo-100 transition-colors shadow-sm"
                         >
@@ -1517,7 +1516,7 @@ export default function LeadDetail() {
                           <div key={idx} className="flex flex-col md:flex-row md:items-end gap-3 p-3 bg-slate-50 rounded-xl border border-slate-205 relative">
                             <div className="flex-1">
                               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">Description</label>
-                              <input 
+                              <input
                                 type="text"
                                 required
                                 placeholder="e.g. Consultation Fees, Application Processing"
@@ -1528,7 +1527,7 @@ export default function LeadDetail() {
                             </div>
                             <div className="w-20">
                               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">Qty</label>
-                              <input 
+                              <input
                                 type="number"
                                 required
                                 min="1"
@@ -1539,7 +1538,7 @@ export default function LeadDetail() {
                             </div>
                             <div className="w-32">
                               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">Rate (Ex GST)</label>
-                              <input 
+                              <input
                                 type="number"
                                 required
                                 min="0"
@@ -1551,8 +1550,8 @@ export default function LeadDetail() {
                             </div>
                             <div className="w-24">
                               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">GST Rate %</label>
-                              <select 
-                                value={line.gstRatePct} 
+                              <select
+                                value={line.gstRatePct}
                                 onChange={e => handleLineChange(idx, 'gstRatePct', e.target.value)}
                                 className="w-full text-xs border border-slate-305 rounded p-2 bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                               >
@@ -1567,8 +1566,8 @@ export default function LeadDetail() {
                               {invoiceCurrency} {((line.quantity * line.unitExGst) * (1 + line.gstRatePct / 100)).toFixed(2)}
                             </div>
                             {invoiceLines.length > 1 && (
-                              <button 
-                                type="button" 
+                              <button
+                                type="button"
                                 onClick={() => handleRemoveInvoiceLine(idx)}
                                 className="absolute md:relative md:top-auto right-2 top-2 text-red-500 hover:text-red-750 font-bold text-xs p-1 bg-white hover:bg-red-50 border border-slate-205 rounded"
                                 title="Remove line item"
@@ -1583,7 +1582,7 @@ export default function LeadDetail() {
 
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Notes / Terms</label>
-                      <textarea 
+                      <textarea
                         rows={2}
                         placeholder="Optional payment notes, bank details, or terms..."
                         value={invoiceNotes}
@@ -1604,15 +1603,15 @@ export default function LeadDetail() {
                     </div>
 
                     <div className="flex items-center space-x-3 pt-4 border-t">
-                      <button 
-                        type="submit" 
+                      <button
+                        type="submit"
                         disabled={isSavingInvoice}
                         className="w-1/2 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-bold text-sm shadow-sm transition-all"
                       >
                         {isSavingInvoice ? 'Creating Invoice...' : 'Create Invoice'}
                       </button>
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => setShowInvoiceModal(false)}
                         className="w-1/2 py-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg font-bold text-sm shadow-sm transition-all"
                       >
@@ -1628,7 +1627,7 @@ export default function LeadDetail() {
             {showPaymentModal && activeInvoiceForPayment && (
               <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                 <div className="bg-white rounded-2xl border border-slate-205 max-w-md w-full shadow-2xl p-6 relative animate-slide-in-up">
-                  <button 
+                  <button
                     onClick={() => setShowPaymentModal(false)}
                     className="absolute right-4 top-4 p-1 rounded-lg border hover:bg-slate-50 text-slate-600"
                   >
@@ -1658,7 +1657,7 @@ export default function LeadDetail() {
 
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Amount to Pay ({activeInvoiceForPayment.currency})</label>
-                      <input 
+                      <input
                         type="number"
                         required
                         min="0.01"
@@ -1671,7 +1670,7 @@ export default function LeadDetail() {
 
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Payment Method</label>
-                      <select 
+                      <select
                         value={paymentMethod}
                         onChange={e => setPaymentMethod(e.target.value)}
                         className="w-full text-sm border border-slate-300 rounded-lg p-2.5 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -1686,7 +1685,7 @@ export default function LeadDetail() {
 
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Transaction Reference</label>
-                      <input 
+                      <input
                         type="text"
                         placeholder="e.g. Txn ID, Receipt number, Bank Ref"
                         value={paymentReference}
@@ -1696,15 +1695,15 @@ export default function LeadDetail() {
                     </div>
 
                     <div className="flex items-center space-x-3 pt-4 border-t">
-                      <button 
-                        type="submit" 
+                      <button
+                        type="submit"
                         disabled={isSavingPayment}
                         className="w-1/2 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-bold text-xs shadow-sm transition-all"
                       >
                         {isSavingPayment ? 'Recording...' : 'Record Payment'}
                       </button>
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => setShowPaymentModal(false)}
                         className="w-1/2 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg font-bold text-xs shadow-sm transition-all"
                       >
@@ -1719,7 +1718,7 @@ export default function LeadDetail() {
         )}
 
         {/* ================= TAB 7: COMMUNICATION ================= */}
-        {activeTab === 'communication' && (
+        {/* {activeTab === 'communication' && (
           <div className="space-y-6">
             <div className="flex items-center space-x-2 border-b pb-2 mb-4">
               <Share2 className="w-5 h-5 text-indigo-600" />
@@ -1729,16 +1728,16 @@ export default function LeadDetail() {
               No communication records (emails/sms) logged yet.
             </div>
           </div>
-        )}
+        )} */}
 
         {/* ================= TAB 8: SUMMARY ================= */}
-        {activeTab === 'summary' && (
+        {/* {activeTab === 'summary' && (
           <div className="space-y-6">
             <div className="flex items-center space-x-2 border-b pb-2 mb-4">
               <Info className="w-5 h-5 text-indigo-600" />
               <h3 className="text-md font-extrabold text-slate-800 tracking-tight">Lead Activity Summary</h3>
             </div>
-            
+
             <div className="space-y-3 max-w-xl text-sm">
               <div className="flex justify-between border-b pb-1">
                 <span className="text-slate-500 font-medium">Creation Date</span>
@@ -1758,7 +1757,7 @@ export default function LeadDetail() {
               </div>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* ================= TAB 9: FOLLOW UP ================= */}
         {activeTab === 'follow-up' && (
@@ -1768,8 +1767,8 @@ export default function LeadDetail() {
                 <Activity className="w-5 h-5 text-indigo-600" />
                 <h3 className="text-md font-extrabold text-slate-800 tracking-tight">Timeline & Follow-ups</h3>
               </div>
-              <button 
-                onClick={() => setFollowUpModalOpen(true)} 
+              <button
+                onClick={() => setFollowUpModalOpen(true)}
                 className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold text-xs shadow-sm transition-all"
               >
                 + Add Follow-up
@@ -1802,7 +1801,7 @@ export default function LeadDetail() {
         )}
 
         {/* ================= TAB 10: VISITS ================= */}
-        {activeTab === 'visits' && (
+        {/* {activeTab === 'visits' && (
           <div className="space-y-6">
             <div className="flex items-center space-x-2 border-b pb-2 mb-4">
               <MapPin className="w-5 h-5 text-indigo-600" />
@@ -1812,7 +1811,7 @@ export default function LeadDetail() {
               No walk-in office visits logged for this client.
             </div>
           </div>
-        )}
+        )} */}
 
       </div>
 
@@ -1820,11 +1819,11 @@ export default function LeadDetail() {
       {showAddNoteModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-end animate-fade-in">
           <div className="bg-white w-full max-w-2xl h-full shadow-2xl overflow-y-auto flex flex-col animate-slide-in-right">
-            
+
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-[#FAF8F5]">
               <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Add File Note</h3>
-              <button 
+              <button
                 onClick={() => setShowAddNoteModal(false)}
                 className="p-1 rounded-lg border border-slate-350 bg-white hover:bg-slate-50 text-slate-600 transition-all"
               >
@@ -1835,56 +1834,56 @@ export default function LeadDetail() {
             {/* Form */}
             <form onSubmit={handleSaveNote} className="flex-1 p-6 space-y-6 flex flex-col justify-between">
               <div className="space-y-6">
-                
+
                 {/* Rich Formatting Helper Toolbar */}
                 <div className="space-y-1">
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide">Note Details</label>
                   <div className="border border-slate-300 rounded-lg overflow-hidden flex flex-col">
-                    
+
                     {/* Toolbar buttons */}
                     <div className="bg-slate-100 px-3 py-2 border-b border-slate-300 flex flex-wrap gap-1.5 items-center">
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => insertHtmlTag('<b>', '</b>')}
                         className="w-7 h-7 bg-white hover:bg-slate-200 border rounded flex items-center justify-center font-bold text-xs transition-colors"
                         title="Bold"
                       >
                         B
                       </button>
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => insertHtmlTag('<i>', '</i>')}
                         className="w-7 h-7 bg-white hover:bg-slate-200 border rounded flex items-center justify-center italic text-xs transition-colors"
                         title="Italic"
                       >
                         I
                       </button>
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => insertHtmlTag('<u>', '</u>')}
                         className="w-7 h-7 bg-white hover:bg-slate-200 border rounded flex items-center justify-center underline text-xs transition-colors"
                         title="Underline"
                       >
                         U
                       </button>
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => insertHtmlTag('<span style="color:#ef4444">', '</span>')}
                         className="w-7 h-7 bg-white hover:bg-slate-200 border rounded flex items-center justify-center text-red-500 font-bold text-xs transition-colors"
                         title="Red Text"
                       >
                         A
                       </button>
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => insertHtmlTag('<ul>\n  <li>', '\n</ul>')}
                         className="w-7 h-7 bg-white hover:bg-slate-200 border rounded flex items-center justify-center text-[10px] font-bold transition-colors"
                         title="Unordered List"
                       >
                         •≡
                       </button>
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => {
                           const url = prompt('Enter link URL (e.g. https://google.com):');
                           if (url) {
@@ -1896,8 +1895,8 @@ export default function LeadDetail() {
                       >
                         🔗
                       </button>
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => setNoteBody('')}
                         className="w-7 h-7 bg-white hover:bg-slate-200 border rounded flex items-center justify-center text-[10px] font-bold text-red-600 transition-colors"
                         title="Clear all"
@@ -1907,7 +1906,7 @@ export default function LeadDetail() {
                     </div>
 
                     {/* Text area */}
-                    <textarea 
+                    <textarea
                       id="note-textarea"
                       rows={5}
                       required
@@ -1922,11 +1921,11 @@ export default function LeadDetail() {
                 {/* Send checklists */}
                 <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Notification Options</h4>
-                  
+
                   <label className="flex items-center space-x-3 cursor-pointer text-sm text-slate-700">
-                    <input 
-                      type="checkbox" 
-                      checked={sendToClient} 
+                    <input
+                      type="checkbox"
+                      checked={sendToClient}
                       onChange={e => setSendToClient(e.target.checked)}
                       className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500"
                     />
@@ -1934,9 +1933,9 @@ export default function LeadDetail() {
                   </label>
 
                   <label className="flex items-center space-x-3 cursor-pointer text-sm text-slate-700">
-                    <input 
-                      type="checkbox" 
-                      checked={sendToAssigned} 
+                    <input
+                      type="checkbox"
+                      checked={sendToAssigned}
                       onChange={e => setSendToAssigned(e.target.checked)}
                       className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500"
                     />
@@ -1944,9 +1943,9 @@ export default function LeadDetail() {
                   </label>
 
                   <label className="flex items-center space-x-3 cursor-pointer text-sm text-slate-700">
-                    <input 
-                      type="checkbox" 
-                      checked={sendToStaff} 
+                    <input
+                      type="checkbox"
+                      checked={sendToStaff}
                       onChange={e => setSendToStaff(e.target.checked)}
                       className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500"
                     />
@@ -1955,18 +1954,18 @@ export default function LeadDetail() {
 
                   <div className="space-y-2">
                     <label className="flex items-center space-x-3 cursor-pointer text-sm text-slate-700">
-                      <input 
-                        type="checkbox" 
-                        checked={sendToOthers} 
+                      <input
+                        type="checkbox"
+                        checked={sendToOthers}
                         onChange={e => setSendToOthers(e.target.checked)}
                         className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500"
                       />
                       <span>Send Notes to Others / Custom Emails</span>
                     </label>
-                    
+
                     {sendToOthers && (
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         placeholder="recipient1@email.com, recipient2@email.com"
                         value={othersEmails}
                         onChange={e => setOthersEmails(e.target.value)}
@@ -1979,7 +1978,7 @@ export default function LeadDetail() {
                 {/* Attachment upload dropzone */}
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide">Include Attachment</label>
-                  <div 
+                  <div
                     onClick={() => fileInputRef.current?.click()}
                     className="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-xl p-6 text-center cursor-pointer bg-slate-50/50 hover:bg-slate-50 transition-all flex flex-col items-center justify-center space-y-2"
                   >
@@ -1988,13 +1987,13 @@ export default function LeadDetail() {
                       <p className="text-xs font-bold text-slate-600">Drop File Here</p>
                       <p className="text-[10px] text-slate-400 mt-0.5">Maximum size: 2MB</p>
                     </div>
-                    <button 
+                    <button
                       type="button"
                       className="text-xs font-bold bg-white border border-slate-300 hover:bg-slate-50 text-indigo-600 px-3 py-1.5 rounded-lg shadow-sm"
                     >
                       Choose file
                     </button>
-                    <input 
+                    <input
                       ref={fileInputRef}
                       type="file"
                       className="hidden"
@@ -2006,8 +2005,8 @@ export default function LeadDetail() {
                   {selectedFile && (
                     <div className="p-2 bg-indigo-50 border border-indigo-200 rounded-lg flex items-center justify-between">
                       <span className="text-xs font-bold text-indigo-900 truncate max-w-[400px]">{selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)</span>
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={(e) => { e.stopPropagation(); setSelectedFile(null); }}
                         className="text-red-500 text-xs font-bold hover:underline"
                       >
@@ -2021,15 +2020,15 @@ export default function LeadDetail() {
 
               {/* Action buttons */}
               <div className="flex items-center space-x-3 pt-6 border-t">
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={isSavingNote || !noteBody.trim()}
                   className="w-1/2 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-bold text-sm shadow-sm transition-all"
                 >
                   {isSavingNote ? 'Saving note...' : 'Save'}
                 </button>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowAddNoteModal(false)}
                   className="w-1/2 py-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg font-bold text-sm shadow-sm transition-all"
                 >
@@ -2046,7 +2045,7 @@ export default function LeadDetail() {
       {activeCalculator && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-fade-in">
-            <button 
+            <button
               onClick={() => setActiveCalculator(null)}
               className="absolute right-4 top-4 p-1 rounded-lg border hover:bg-slate-50 text-slate-600"
             >
@@ -2125,27 +2124,27 @@ export default function LeadDetail() {
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">Tuition Fees ($ / Year)</label>
-                    <input 
-                      type="number" 
-                      value={fundTuition} 
+                    <input
+                      type="number"
+                      value={fundTuition}
                       onChange={e => setFundTuition(e.target.value)}
                       className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">Living Expenses ($ / Year)</label>
-                    <input 
-                      type="number" 
-                      value={fundLiving} 
+                    <input
+                      type="number"
+                      value={fundLiving}
                       onChange={e => setFundLiving(e.target.value)}
                       className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">Travel & Miscellaneous ($)</label>
-                    <input 
-                      type="number" 
-                      value={fundTravel} 
+                    <input
+                      type="number"
+                      value={fundTravel}
                       onChange={e => setFundTravel(e.target.value)}
                       className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white"
                     />
@@ -2180,10 +2179,10 @@ export default function LeadDetail() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">Number of Applicants</label>
-                    <input 
-                      type="number" 
-                      min="1" 
-                      value={visaApplicantsCount} 
+                    <input
+                      type="number"
+                      min="1"
+                      value={visaApplicantsCount}
                       onChange={e => setVisaApplicantsCount(e.target.value)}
                       className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white"
                     />
@@ -2197,8 +2196,8 @@ export default function LeadDetail() {
                 </div>
               </div>
             )}
-            
-            <button 
+
+            <button
               onClick={() => setActiveCalculator(null)}
               className="w-full mt-4 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 font-bold text-xs shadow-sm transition-all"
             >
@@ -2212,14 +2211,14 @@ export default function LeadDetail() {
       {isCreateCaseModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-100 flex flex-col animate-scale-up">
-            
+
             {/* Header */}
             <div className="px-6 py-5 border-b border-slate-200 flex justify-between items-center bg-[#FAF8F5]">
               <div className="flex items-center space-x-2">
                 <Briefcase className="w-5 h-5 text-indigo-600" />
                 <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Create Immigration Case</h3>
               </div>
-              <button 
+              <button
                 onClick={() => setIsCreateCaseModalOpen(false)}
                 className="p-1 rounded-lg border border-slate-350 bg-white hover:bg-slate-50 text-slate-600 transition-all"
               >

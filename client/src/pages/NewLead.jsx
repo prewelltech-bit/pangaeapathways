@@ -466,10 +466,7 @@ export default function NewLead() {
                 <label className={labelClass}>Date of Birth</label>
                 <input type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={handleChange} className={getInputClass('dateOfBirth')} />
               </div>
-              <div>
-                <label className={labelClass}>Visa Expiry Date</label>
-                <input type="date" name="visaExpiryDate" value={formData.visaExpiryDate} onChange={handleChange} className={getInputClass('visaExpiryDate')} />
-              </div>
+
             </div>
 
             <div>
@@ -543,6 +540,10 @@ export default function NewLead() {
               <div>
                 <label className={labelClass}>Visa type you currently hold</label>
                 <input type="text" name="currentVisaType" value={formData.currentVisaType} onChange={handleChange} className={getInputClass('currentVisaType')} />
+              </div>
+              <div>
+                <label className={labelClass}>Visa Expiry Date which you currently hold</label>
+                <input type="date" name="visaExpiryDate" value={formData.visaExpiryDate} onChange={handleChange} className={getInputClass('visaExpiryDate')} />
               </div>
             </div>
 

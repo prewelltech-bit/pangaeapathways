@@ -10,6 +10,20 @@ import {
   Download, Award, GraduationCap, Folder, MessageSquare, Clock
 } from 'lucide-react';
 import FollowUpModal from '../components/FollowUpModal';
+import { countries as defaultCountries } from '../lib/countries';
+
+const format = (date, formatStr) => {
+  if (!date) return '';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = months[d.getMonth()];
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${day}-${month}-${year} ${hours}:${minutes}`;
+};
 
 const documentCategories = [
   'Identity',
@@ -21,10 +35,20 @@ const documentCategories = [
   'Other'
 ];
 
+const serviceLabels = {
+  CANADA: 'Canada Student Visa',
+  USA: 'USA Student Visa',
+  UK: 'UK Student Visa',
+  EUROPE: 'Europe Work Permit',
+  AUSTRALIA: 'Australia Student Visa',
+  OTHER: 'Other Visa Service'
+};
+
 export default function LeadDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, canEditLeads } = useAuth();
+  const { user, canEditLeads, isCEO } = useAuth();
+
 
   const [lead, setLead] = useState(null);
   const [cases, setCases] = useState([]);
@@ -43,17 +67,9 @@ export default function LeadDetail() {
 
   // Secondary Applicant editing block
   const [editingSecondary, setEditingSecondary] = useState(false);
-  const [secondaryFormData, setSecondaryFormData] = useState({
-    secondaryRelationship: '',
-    secondaryFirstName: '',
-    secondaryLastName: '',
-    secondaryDob: '',
-    secondaryPassport: '',
-    secondaryContactCode: '+91',
-    secondaryContactNumber: '',
-    secondaryEmail: '',
-    secondaryAddress: ''
-  });
+  const [secondaryApplicants, setSecondaryApplicants] = useState([]);
+  const [editingSecondaryApplicants, setEditingSecondaryApplicants] = useState([]);
+  const [countriesList, setCountriesList] = useState(defaultCountries);
 
   // Notes Search and Add Modals
   const [notesSearchQuery, setNotesSearchQuery] = useState('');
@@ -109,6 +125,20 @@ export default function LeadDetail() {
   const [caseTargetCountry, setCaseTargetCountry] = useState('Canada');
   const [caseProductLine, setCaseProductLine] = useState('CANADA');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
+
+  // Add Services Drawer/Modal states
+  const [showAddServiceDrawer, setShowAddServiceDrawer] = useState(false);
+  const [serviceType, setServiceType] = useState('');
+  const [selectedService, setSelectedService] = useState('');
+  const [assigneeUser, setAssigneeUser] = useState('');
+  const [followupType, setFollowupType] = useState('');
+  const [sendEmail, setSendEmail] = useState(false);
+  const [sendSms, setSendSms] = useState(false);
+  const [drawerComments, setDrawerComments] = useState('');
+
+  // Duplicate Service warning modal states
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicateLeads, setDuplicateLeads] = useState([]);
 
   // New Invoice Form State
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
@@ -248,6 +278,79 @@ export default function LeadDetail() {
     }
   };
 
+  const getServiceOptions = () => {
+    if (serviceType === 'Student Visa') {
+      return [
+        { value: 'CANADA', label: 'Canada Student Visa' },
+        { value: 'USA', label: 'USA Student Visa' },
+        { value: 'UK', label: 'UK Student Visa' },
+        { value: 'AUSTRALIA', label: 'Australia Student Visa' }
+      ];
+    } else if (serviceType === 'Work Permit') {
+      return [
+        { value: 'EUROPE', label: 'Europe Work Permit' }
+      ];
+    } else if (serviceType === 'Other') {
+      return [
+        { value: 'OTHER', label: 'Other Visa Service' }
+      ];
+    }
+    return [];
+  };
+
+  const handleAddServiceSave = async (e) => {
+    e.preventDefault();
+    if (!serviceType || !selectedService || !assigneeUser) {
+      alert('Please fill all required fields');
+      return;
+    }
+
+    try {
+      const checkRes = await axios.get(`/api/leads/${id}/duplicate-check`);
+
+      if (checkRes.data && checkRes.data.length > 0) {
+        setDuplicateLeads(checkRes.data);
+        setShowDuplicateModal(true);
+      } else {
+        await executeDuplication();
+      }
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || 'Failed to check duplicate services');
+    }
+  };
+
+  const executeDuplication = async () => {
+    try {
+      const payload = {
+        productLine: selectedService,
+        ownerId: assigneeUser,
+        comments: drawerComments,
+        followupType: followupType || null,
+        sendEmail,
+        sendSms
+      };
+
+      const res = await axios.post(`/api/leads/${id}/duplicate`, payload);
+      alert('Service added and lead duplicated successfully!');
+
+      setShowAddServiceDrawer(false);
+      setShowDuplicateModal(false);
+      setServiceType('');
+      setSelectedService('');
+      setAssigneeUser('');
+      setFollowupType('');
+      setSendEmail(false);
+      setSendSms(false);
+      setDrawerComments('');
+
+      navigate(`/leads/${res.data.id}`);
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.detail || 'Failed to duplicate lead for new service');
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, [id]);
@@ -273,22 +376,37 @@ export default function LeadDetail() {
 
   const fetchData = async () => {
     try {
-      const [leadRes, casesRes, actRes, docsRes, notesRes, usersRes, invoicesRes] = await Promise.all([
+      const [leadRes, casesRes, actRes, docsRes, notesRes, usersRes, invoicesRes, countriesRes] = await Promise.all([
         axios.get(`/api/leads/${id}`),
         axios.get(`/api/cases/lead/${id}`),
         axios.get(`/api/activities/lead/${id}`),
         axios.get(`/api/documents/lead/${id}`),
         axios.get(`/api/leads/${id}/notes`),
         axios.get(`/api/users`),
-        axios.get(`/api/finance/invoices/lead/${id}`)
+        axios.get(`/api/finance/invoices/lead/${id}`),
+        axios.get('/api/meta/countries').catch(err => {
+          console.error("Could not fetch countries", err);
+          return { data: [] };
+        })
       ]);
-      setLead(leadRes.data);
+      const fetchedLead = leadRes.data;
+      if (fetchedLead) {
+        if (!fetchedLead.firstName || !fetchedLead.lastName) {
+          const nameParts = (fetchedLead.fullName || '').split(' ');
+          fetchedLead.firstName = fetchedLead.firstName || nameParts[0] || '';
+          fetchedLead.lastName = fetchedLead.lastName || nameParts.slice(1).join(' ') || '';
+        }
+      }
+      setLead(fetchedLead);
       setCases(casesRes.data);
       setActivities(actRes.data);
       setDocuments(docsRes.data);
       setNotes(notesRes.data);
       setUsersList(usersRes.data);
       setInvoices(invoicesRes.data);
+      if (countriesRes && countriesRes.data && countriesRes.data.length > 0) {
+        setCountriesList(countriesRes.data);
+      }
 
       if (leadRes.data) {
         setCaseVisaType(leadRes.data.visaCategory || 'Student');
@@ -305,17 +423,21 @@ export default function LeadDetail() {
       }
 
       // Prepopulate secondary applicant edit state
-      setSecondaryFormData({
-        secondaryRelationship: leadRes.data.secondaryRelationship || '',
-        secondaryFirstName: leadRes.data.secondaryFirstName || '',
-        secondaryLastName: leadRes.data.secondaryLastName || '',
-        secondaryDob: leadRes.data.secondaryDob || '',
-        secondaryPassport: leadRes.data.secondaryPassport || '',
-        secondaryContactCode: leadRes.data.secondaryContactCode || '+91',
-        secondaryContactNumber: leadRes.data.secondaryContactNumber || '',
-        secondaryEmail: leadRes.data.secondaryEmail || '',
-        secondaryAddress: leadRes.data.secondaryAddress || ''
-      });
+      let loadedSecondaryApplicants = leadRes.data.secondaryApplicants || [];
+      if (loadedSecondaryApplicants.length === 0 && leadRes.data.secondaryRelationship) {
+        loadedSecondaryApplicants = [{
+          secondaryRelationship: leadRes.data.secondaryRelationship || '',
+          secondaryFirstName: leadRes.data.secondaryFirstName || '',
+          secondaryLastName: leadRes.data.secondaryLastName || '',
+          secondaryDob: leadRes.data.secondaryDob || '',
+          secondaryPassport: leadRes.data.secondaryPassport || '',
+          secondaryContactCode: leadRes.data.secondaryContactCode || '+91',
+          secondaryContactNumber: leadRes.data.secondaryContactNumber || '',
+          secondaryEmail: leadRes.data.secondaryEmail || '',
+          secondaryAddress: leadRes.data.secondaryAddress || ''
+        }];
+      }
+      setSecondaryApplicants(loadedSecondaryApplicants);
     } catch (err) {
       console.error(err);
     } finally {
@@ -391,19 +513,74 @@ export default function LeadDetail() {
     }
   };
 
-  const saveSecondaryApplicant = async (e) => {
+  const handleStartEditSecondary = () => {
+    setEditingSecondaryApplicants(
+      secondaryApplicants.map(sa => ({ ...sa }))
+    );
+    setEditingSecondary(true);
+  };
+
+  const handleSecondaryApplicantFieldChange = (index, field, value) => {
+    setEditingSecondaryApplicants(prev =>
+      prev.map((item, i) => i === index ? { ...item, [field]: value } : item)
+    );
+  };
+
+  const addSecondaryApplicantField = () => {
+    setEditingSecondaryApplicants(prev => [
+      ...prev,
+      {
+        secondaryRelationship: '',
+        secondaryFirstName: '',
+        secondaryLastName: '',
+        secondaryDob: '',
+        secondaryPassport: '',
+        secondaryContactCode: '+91',
+        secondaryContactNumber: '',
+        secondaryEmail: '',
+        secondaryAddress: ''
+      }
+    ]);
+  };
+
+  const removeSecondaryApplicantField = (index) => {
+    setEditingSecondaryApplicants(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const saveSecondaryApplicants = async (e) => {
     e.preventDefault();
+
+    // Validate secondary applicants
+    for (let i = 0; i < editingSecondaryApplicants.length; i++) {
+      const sa = editingSecondaryApplicants[i];
+      if (sa.secondaryContactNumber && sa.secondaryContactNumber.trim()) {
+        const check = validatePhone(sa.secondaryContactCode, sa.secondaryContactNumber);
+        if (!check.isValid) {
+          alert(`Secondary Applicant #${i + 1} phone number error: ${check.error}`);
+          return;
+        }
+      }
+      if (sa.secondaryEmail && sa.secondaryEmail.trim()) {
+        if (!/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(sa.secondaryEmail.trim())) {
+          alert(`Secondary Applicant #${i + 1} email error: Invalid format`);
+          return;
+        }
+      }
+    }
+
     try {
-      await axios.patch(`/api/leads/${id}`, secondaryFormData);
+      const payload = { secondaryApplicants: editingSecondaryApplicants };
+      await axios.patch(`/api/leads/${id}`, payload);
       setLead(prev => ({
         ...prev,
-        ...secondaryFormData
+        secondaryApplicants: editingSecondaryApplicants
       }));
+      setSecondaryApplicants(editingSecondaryApplicants);
       setEditingSecondary(false);
-      alert('Secondary Applicant saved successfully');
+      alert('Secondary Applicants saved successfully');
     } catch (err) {
       console.error(err);
-      alert('Failed to save Secondary Applicant details');
+      alert('Failed to save Secondary Applicants details');
     }
   };
 
@@ -585,7 +762,7 @@ export default function LeadDetail() {
             </div>
 
             <div className="text-xs text-slate-500 font-bold mt-1 text-indigo-700/80">
-              LEAD ID: {id.substring(id.length - 8).toUpperCase()}
+              LEAD ID: LEAD-{String(lead.leadNo || 1).padStart(4, '0')}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-1.5 mt-4 text-xs font-semibold text-slate-600">
@@ -608,29 +785,31 @@ export default function LeadDetail() {
         {/* Top Right Action & Service Selector */}
         <div className="flex items-center space-x-3 self-end md:self-center">
           <select
-            value={lead.productLine || 'CANADA'}
-            onChange={(e) => handleServiceChange(e.target.value)}
-            className="text-xs font-bold py-2 px-3 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            value={id}
+            onChange={(e) => navigate(`/leads/${e.target.value}`)}
+            className="text-xs font-bold py-2 px-3 bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm"
           >
-            <option value="CANADA">Canada Student Visa</option>
-            <option value="USA">USA Student Visa</option>
-            <option value="UK">UK Student Visa</option>
-            <option value="EUROPE">Europe Work Permit</option>
-            <option value="AUSTRALIA">Australia Student Visa</option>
-            <option value="OTHER">Other Visa Service</option>
+            {(lead.relatedLeads && lead.relatedLeads.length > 0
+              ? lead.relatedLeads
+              : [{ id, productLine: lead.productLine, fullName: lead.fullName }]
+            ).map((r) => (
+              <option key={r.id} value={r.id}>
+                {`${serviceLabels[r.productLine] || r.productLine} - (${r.fullName})`}
+              </option>
+            ))}
           </select>
 
           <button
-            onClick={() => setShowAddNoteModal(true)}
-            className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-700 shadow-sm transition-all"
-            title="Create File Note"
+            onClick={() => setShowAddServiceDrawer(true)}
+            className="w-8 h-8 rounded-lg bg-[#EEEBFF] text-[#6366F1] flex items-center justify-center hover:bg-indigo-100 shadow-sm transition-all"
+            title="Add Services"
           >
             <Plus className="w-4 h-4" />
           </button>
 
           <button
             onClick={() => navigate('/leads')}
-            className="w-8 h-8 rounded-lg border border-slate-300 bg-white text-slate-600 flex items-center justify-center hover:bg-slate-50 shadow-sm transition-all"
+            className="w-8 h-8 rounded-lg border border-red-100 bg-[#FFF5F5] text-red-500 flex items-center justify-center hover:bg-red-100 shadow-sm transition-all"
             title="Close"
           >
             <X className="w-4 h-4" />
@@ -645,7 +824,7 @@ export default function LeadDetail() {
           // { id: 'assessment-info', label: 'Assessment Info', icon: GraduationCap },
           { id: 'process', label: 'Case Pipeline', icon: Activity },
           { id: 'file-notes', label: 'File Notes', icon: FileText },
-          // { id: 'documents', label: 'Documents', icon: Folder },
+          { id: 'documents', label: 'Documents', icon: Folder },
           { id: 'accounts', label: 'Accounts', icon: DollarSign },
           // { id: 'communication', label: 'Communication', icon: MessageSquare },
           // { id: 'summary', label: 'Summary', icon: Info },
@@ -703,7 +882,7 @@ export default function LeadDetail() {
                     options: ['Never Married', 'Married', 'Divorced', 'Widowed'],
                     val: lead.maritalStatus
                   },
-                  // { kxey: 'visaExpiryDate', label: 'Visa Expiry Date', type: 'date', val: lead.visaExpiryDate },
+                  { key: 'visaExpiryDate', label: 'Visa Expiry Date', type: 'date', val: lead.visaExpiryDate },
                   { key: 'passportNumber', label: 'Passport Number', type: 'text', val: lead.passportNumber }
                 ].map(field => {
                   const isEditing = editingField === field.key;
@@ -761,78 +940,182 @@ export default function LeadDetail() {
 
             {/* Section B: Contact Information */}
             <div>
-              <div className="flex items-center space-x-2 border-b pb-2 mb-4">
-                <Phone className="w-5 h-5 text-indigo-600" />
-                <h3 className="text-md font-extrabold text-slate-800 tracking-tight">Contact Information</h3>
+              <div className="flex justify-between items-center border-b pb-2 mb-4">
+                <div className="flex items-center space-x-2">
+                  <Phone className="w-5 h-5 text-indigo-650" />
+                  <h3 className="text-md font-extrabold text-slate-800 tracking-tight">Contact Information</h3>
+                </div>
+                {canEditLeads && (
+                  <button
+                    onClick={() => navigate(`/leads/${id}/edit`)}
+                    className="flex items-center text-xs font-bold text-[#6366F1] bg-indigo-50 hover:bg-indigo-100 py-1.5 px-3 rounded-lg border border-indigo-200 transition"
+                  >
+                    <Edit2 className="w-3.5 h-3.5 mr-1" /> Edit Info
+                  </button>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[
-                  { key: 'phone', label: 'Contact No', type: 'text', val: lead.phone },
-                  { key: 'email', label: 'Email Address', type: 'text', val: lead.email },
-                  { key: 'addressLine1', label: 'Address Line 1', type: 'text', val: lead.addressLine1 },
-                  { key: 'addressLine2', label: 'Address Line 2', type: 'text', val: lead.addressLine2 },
-                  { key: 'city', label: 'City', type: 'text', val: lead.city },
-                  { key: 'state', label: 'State', type: 'text', val: lead.state },
-                  { key: 'country', label: 'Country', type: 'text', val: lead.country },
-                  { key: 'zipcode', label: 'Zipcode', type: 'text', val: lead.zipcode },
-                  { key: 'facebookLink', label: 'Facebook Link', type: 'text', val: lead.facebookLink },
-                  { key: 'linkedinLink', label: 'LinkedIn Link', type: 'text', val: lead.linkedinLink },
-                  { key: 'instagramLink', label: 'Instagram Link', type: 'text', val: lead.instagramLink },
-                  { key: 'travelledCountries', label: 'Sub Agent / Partner Source', type: 'text', val: lead.travelledCountries }
-                ].map(field => {
-                  const isEditing = editingField === field.key;
-                  return (
-                    <div key={field.key} className="bg-slate-50/50 p-3 rounded-lg border border-slate-100 flex flex-col justify-between">
-                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wide">{field.label}</label>
-                      <div className="mt-1 flex items-center justify-between min-h-[36px]">
-                        {isEditing ? (
-                          <div className="flex items-center w-full space-x-2">
-                            <input
-                              type="text"
-                              value={tempValue}
-                              onChange={e => setTempValue(e.target.value)}
-                              className="text-sm bg-white border border-slate-300 rounded px-2 py-1 w-full focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                            />
-                            <button onClick={() => saveEditField(field.key)} className="p-1 bg-green-50 text-green-700 rounded hover:bg-green-100 border border-green-200">
-                              <Check className="w-3.5 h-3.5" />
-                            </button>
-                            <button onClick={() => setEditingField(null)} className="p-1 bg-red-50 text-red-700 rounded hover:bg-red-100 border border-red-200">
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <>
-                            <span className="text-sm font-semibold text-slate-800 truncate max-w-[200px]" title={field.val}>
-                              {field.val || <em className="text-slate-400 font-normal">Not provided</em>}
+              {/* Sub-grid: 1. Phone numbers list; 2. Emails list */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                {/* Contact Numbers List */}
+                <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-200/60 space-y-3">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Phone Numbers</h4>
+                  {lead.phoneNumbers && lead.phoneNumbers.length > 0 ? (
+                    <div className="space-y-2">
+                      {lead.phoneNumbers.map((pn, i) => (
+                        <div key={i} className={`p-2.5 rounded-lg border flex justify-between items-center bg-white ${pn.isPreferred ? 'border-indigo-250 shadow-sm ring-1 ring-indigo-50' : 'border-slate-150'}`}>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-[10px] bg-slate-100 text-slate-550 font-bold px-2 py-0.5 rounded uppercase">
+                              {pn.contactType || 'Personal'}
                             </span>
-                            {canEditLeads && (
-                              <button
-                                onClick={() => startEditField(field.key, field.val)}
-                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
+                            <span className="text-sm font-semibold text-slate-700">
+                              {pn.contactCode || '+91'} {pn.contactNumber}
+                            </span>
+                          </div>
+                          {pn.isPreferred && (
+                            <span className="text-[9px] bg-indigo-100 text-indigo-755 font-bold px-1.5 py-0.5 rounded-full">
+                              Preferred
+                            </span>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  );
-                })}
+                  ) : (
+                    <div className="p-2.5 rounded-lg border border-dashed border-slate-200 text-slate-400 text-xs italic bg-white">
+                      {lead.phone || 'No phone numbers provided'}
+                    </div>
+                  )}
+                </div>
+
+                {/* Email Addresses List */}
+                <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-200/60 space-y-3">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Email Addresses</h4>
+                  {lead.emailAddresses && lead.emailAddresses.length > 0 ? (
+                    <div className="space-y-2">
+                      {lead.emailAddresses.map((em, i) => (
+                        <div key={i} className={`p-2.5 rounded-lg border flex justify-between items-center bg-white ${em.isPreferred ? 'border-indigo-255 shadow-sm ring-1 ring-indigo-50' : 'border-slate-150'}`}>
+                          <div className="flex items-center space-x-2 overflow-hidden">
+                            <span className="text-[10px] bg-slate-100 text-slate-550 font-bold px-2 py-0.5 rounded uppercase shrink-0">
+                              {em.emailType || 'Personal'}
+                            </span>
+                            <span className="text-sm font-semibold text-slate-700 truncate" title={em.emailAddress}>
+                              {em.emailAddress}
+                            </span>
+                          </div>
+                          {em.isPreferred && (
+                            <span className="text-[9px] bg-indigo-100 text-indigo-755 font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                              Preferred
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-2.5 rounded-lg border border-dashed border-slate-200 text-slate-400 text-xs italic bg-white">
+                      {lead.email || 'No email addresses provided'}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Physical Addresses Cards Grid */}
+              <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 mb-6 space-y-4">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Physical Addresses</h4>
+                {lead.addresses && lead.addresses.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {lead.addresses.map((addr, idx) => (
+                      <div key={idx} className={`p-4 rounded-xl border bg-white shadow-sm flex flex-col justify-between ${addr.isDefault ? 'border-indigo-400 ring-2 ring-indigo-50/50' : 'border-slate-200'}`}>
+                        <div>
+                          <div className="flex justify-between items-center mb-2.5 border-b border-slate-100 pb-1.5">
+                            <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded uppercase">
+                              {addr.addressType || 'Permanent'}
+                            </span>
+                            {addr.isDefault && (
+                              <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded-full">
+                                Default Billing
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="text-xs text-slate-650 space-y-0.5 font-mono">
+                            <p className="font-semibold text-slate-805 font-sans text-sm">
+                              {lead.fullName || 'Applicant Name'}
+                            </p>
+                            <p>{addr.addressLine1}</p>
+                            {addr.addressLine2 && <p>{addr.addressLine2}</p>}
+                            <p>
+                              {[addr.city, addr.state, addr.zipcode].filter(Boolean).join(', ')}
+                            </p>
+                            <p className="font-bold text-indigo-650 uppercase tracking-wide pt-1">
+                              {addr.country}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl border border-dashed border-slate-200 text-slate-400 text-xs italic bg-white">
+                    {lead.addressLine1 ? (
+                      <div className="text-xs text-slate-650 space-y-0.5 font-mono">
+                        <p>{lead.addressLine1}</p>
+                        {lead.addressLine2 && <p>{lead.addressLine2}</p>}
+                        <p>{[lead.city, lead.state, lead.zipcode].filter(Boolean).join(', ')}</p>
+                        <p className="font-bold uppercase tracking-wide">{lead.country}</p>
+                      </div>
+                    ) : 'No physical addresses provided'}
+                  </div>
+                )}
+              </div>
+
+              {/* Social and other links */}
+              <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-200/60 space-y-3">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Social Links & Source</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-400 block mb-0.5">Facebook</span>
+                    {lead.facebookLink ? (
+                      <a href={lead.facebookLink} target="_blank" rel="noopener noreferrer" className="text-indigo-655 hover:underline font-semibold break-all">
+                        {lead.facebookLink}
+                      </a>
+                    ) : <span className="text-slate-400 italic">None</span>}
+                  </div>
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-400 block mb-0.5">LinkedIn</span>
+                    {lead.linkedinLink ? (
+                      <a href={lead.linkedinLink} target="_blank" rel="noopener noreferrer" className="text-indigo-655 hover:underline font-semibold break-all">
+                        {lead.linkedinLink}
+                      </a>
+                    ) : <span className="text-slate-400 italic">None</span>}
+                  </div>
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-400 block mb-0.5">Instagram</span>
+                    {lead.instagramLink ? (
+                      <a href={lead.instagramLink} target="_blank" rel="noopener noreferrer" className="text-indigo-655 hover:underline font-semibold break-all">
+                        {lead.instagramLink}
+                      </a>
+                    ) : <span className="text-slate-400 italic">None</span>}
+                  </div>
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-400 block mb-0.5">Partner / Source Link</span>
+                    <span className="font-semibold text-slate-700">
+                      {lead.travelledCountries || <span className="text-slate-400 italic font-normal">None</span>}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Section C: Secondary Applicant */}
+            {/* Section C: Secondary Applicants */}
             <div className="border border-slate-200 rounded-xl p-6 bg-slate-50/20">
               <div className="flex items-center justify-between border-b pb-2 mb-4">
                 <div className="flex items-center space-x-2">
                   <Users className="w-5 h-5 text-indigo-600" />
-                  <h3 className="text-md font-extrabold text-slate-800 tracking-tight">Secondary Applicant</h3>
+                  <h3 className="text-md font-extrabold text-slate-800 tracking-tight">Secondary Applicants</h3>
                 </div>
                 {!editingSecondary && canEditLeads && (
                   <button
-                    onClick={() => setEditingSecondary(true)}
+                    onClick={handleStartEditSecondary}
                     className="flex items-center text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-white border border-slate-200 hover:bg-slate-50 py-1.5 px-3 rounded-lg shadow-sm"
                   >
                     <Plus className="w-3.5 h-3.5 mr-1" /> Add/Edit Details
@@ -841,96 +1124,139 @@ export default function LeadDetail() {
               </div>
 
               {editingSecondary ? (
-                <form onSubmit={saveSecondaryApplicant} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1">Relationship</label>
-                    <select
-                      value={secondaryFormData.secondaryRelationship}
-                      onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryRelationship: e.target.value })}
-                      className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                <form onSubmit={saveSecondaryApplicants} className="space-y-6">
+                  <div className="flex justify-between items-center bg-white p-3 border rounded-xl border-slate-200">
+                    <span className="text-xs font-bold text-slate-500">Manage dependents / family members</span>
+                    <button
+                      type="button"
+                      onClick={addSecondaryApplicantField}
+                      className="flex items-center text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 py-1.5 px-3 rounded-lg shadow-sm transition-colors"
                     >
-                      <option value="">Select</option>
-                      <option value="Spouse">Spouse</option>
-                      <option value="Child">Child</option>
-                      <option value="Parent">Parent</option>
-                      <option value="Sibling">Sibling</option>
-                    </select>
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Add Applicant
+                    </button>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1">First Name</label>
-                    <input
-                      type="text"
-                      value={secondaryFormData.secondaryFirstName}
-                      onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryFirstName: e.target.value })}
-                      className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1">Last Name</label>
-                    <input
-                      type="text"
-                      value={secondaryFormData.secondaryLastName}
-                      onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryLastName: e.target.value })}
-                      className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1">Date of Birth</label>
-                    <input
-                      type="date"
-                      value={secondaryFormData.secondaryDob}
-                      onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryDob: e.target.value })}
-                      className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1">Passport Number</label>
-                    <input
-                      type="text"
-                      value={secondaryFormData.secondaryPassport}
-                      onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryPassport: e.target.value })}
-                      className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1">Phone Number</label>
-                    <div className="flex space-x-2">
-                      <select
-                        value={secondaryFormData.secondaryContactCode}
-                        onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryContactCode: e.target.value })}
-                        className="text-sm bg-white border border-slate-300 rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-20"
-                      >
-                        <option value="+91">+91</option>
-                        <option value="+61">+61</option>
-                        <option value="+1">+1</option>
-                      </select>
-                      <input
-                        type="text"
-                        value={secondaryFormData.secondaryContactNumber}
-                        onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryContactNumber: e.target.value })}
-                        className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
+
+                  {editingSecondaryApplicants.length === 0 ? (
+                    <div className="py-8 text-center text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl bg-white">
+                      No applicants added. Click "Add Applicant" to add family members.
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1">Email Address</label>
-                    <input
-                      type="email"
-                      value={secondaryFormData.secondaryEmail}
-                      onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryEmail: e.target.value })}
-                      className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 mb-1">Permanent Address</label>
-                    <input
-                      type="text"
-                      value={secondaryFormData.secondaryAddress}
-                      onChange={e => setSecondaryFormData({ ...secondaryFormData, secondaryAddress: e.target.value })}
-                      className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div className="md:col-span-3 flex justify-end space-x-3 mt-4">
+                  ) : (
+                    <div className="space-y-6">
+                      {editingSecondaryApplicants.map((applicant, idx) => (
+                        <div key={idx} className="relative bg-white border border-slate-200 rounded-2xl p-5 shadow-sm animate-fade-in">
+                          <div className="absolute top-4 right-4">
+                            <button
+                              type="button"
+                              onClick={() => removeSecondaryApplicantField(idx)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg border border-red-100 bg-white"
+                              title="Remove applicant"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-4">
+                            Secondary Applicant #{idx + 1} {applicant.secondaryRelationship ? `(${applicant.secondaryRelationship})` : ''}
+                          </h4>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 mb-1">Relationship</label>
+                              <select
+                                value={applicant.secondaryRelationship}
+                                onChange={e => handleSecondaryApplicantFieldChange(idx, 'secondaryRelationship', e.target.value)}
+                                className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              >
+                                <option value="">Select</option>
+                                <option value="Spouse">Spouse</option>
+                                <option value="Child">Child</option>
+                                <option value="Parent">Parent</option>
+                                <option value="Sibling">Sibling</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 mb-1">First Name</label>
+                              <input
+                                type="text"
+                                value={applicant.secondaryFirstName}
+                                onChange={e => handleSecondaryApplicantFieldChange(idx, 'secondaryFirstName', e.target.value)}
+                                className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 mb-1">Last Name</label>
+                              <input
+                                type="text"
+                                value={applicant.secondaryLastName}
+                                onChange={e => handleSecondaryApplicantFieldChange(idx, 'secondaryLastName', e.target.value)}
+                                className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 mb-1">Date of Birth</label>
+                              <input
+                                type="date"
+                                value={applicant.secondaryDob}
+                                onChange={e => handleSecondaryApplicantFieldChange(idx, 'secondaryDob', e.target.value)}
+                                className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 mb-1">Passport Number</label>
+                              <input
+                                type="text"
+                                value={applicant.secondaryPassport}
+                                onChange={e => handleSecondaryApplicantFieldChange(idx, 'secondaryPassport', e.target.value)}
+                                className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 mb-1">Phone Number</label>
+                              <div className="flex space-x-2">
+                                <select
+                                  value={applicant.secondaryContactCode}
+                                  onChange={e => handleSecondaryApplicantFieldChange(idx, 'secondaryContactCode', e.target.value)}
+                                  className="text-sm bg-white border border-slate-300 rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-20"
+                                >
+                                  {countriesList.map(c => (
+                                    <option key={`${c.code}-${c.dial_code}`} value={c.dial_code}>
+                                      {c.dial_code} ({c.name})
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="text"
+                                  value={applicant.secondaryContactNumber}
+                                  onChange={e => handleSecondaryApplicantFieldChange(idx, 'secondaryContactNumber', e.target.value)}
+                                  className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-500 mb-1">Email Address</label>
+                              <input
+                                type="email"
+                                value={applicant.secondaryEmail}
+                                onChange={e => handleSecondaryApplicantFieldChange(idx, 'secondaryEmail', e.target.value)}
+                                className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-xs font-bold text-slate-500 mb-1">Permanent Address</label>
+                              <input
+                                type="text"
+                                value={applicant.secondaryAddress}
+                                onChange={e => handleSecondaryApplicantFieldChange(idx, 'secondaryAddress', e.target.value)}
+                                className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end space-x-3 mt-4">
                     <button
                       type="button"
                       onClick={() => setEditingSecondary(false)}
@@ -942,49 +1268,55 @@ export default function LeadDetail() {
                       type="submit"
                       className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white text-xs font-bold shadow-sm"
                     >
-                      Save Applicant
+                      Save All Applicants
                     </button>
                   </div>
                 </form>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {lead.secondaryRelationship ? (
-                    <>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-slate-400">Relationship</span>
-                        <span className="text-sm font-semibold text-slate-700">{lead.secondaryRelationship}</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-slate-400">Name</span>
-                        <span className="text-sm font-semibold text-slate-700">{lead.secondaryFirstName} {lead.secondaryLastName}</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-slate-400">Date of Birth</span>
-                        <span className="text-sm font-semibold text-slate-700">{lead.secondaryDob || 'N/A'}</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-slate-400">Passport</span>
-                        <span className="text-sm font-semibold text-slate-700">{lead.secondaryPassport || 'N/A'}</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-slate-400">Contact Number</span>
-                        <span className="text-sm font-semibold text-slate-700">
-                          {lead.secondaryContactNumber ? `${lead.secondaryContactCode || ''} ${lead.secondaryContactNumber}` : 'N/A'}
-                        </span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-slate-400">Email Address</span>
-                        <span className="text-sm font-semibold text-slate-700">{lead.secondaryEmail || 'N/A'}</span>
-                      </div>
-                      <div className="flex flex-col md:col-span-2">
-                        <span className="text-xs font-bold text-slate-400">Address</span>
-                        <span className="text-sm font-semibold text-slate-700">{lead.secondaryAddress || 'N/A'}</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="col-span-full py-6 text-center text-slate-400 text-sm">
+                <div className="space-y-6">
+                  {secondaryApplicants.length === 0 ? (
+                    <div className="py-6 text-center text-slate-400 text-sm">
                       No secondary applicant details added.
                     </div>
+                  ) : (
+                    secondaryApplicants.map((applicant, idx) => (
+                      <div key={idx} className="bg-white border border-slate-150 rounded-xl p-5 shadow-sm">
+                        <h4 className="text-xs font-black text-indigo-700 uppercase tracking-wider mb-4 border-b pb-1.5 flex items-center">
+                          <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center mr-1.5 text-[9px] font-black">
+                            {idx + 1}
+                          </span>
+                          Applicant #{idx + 1}: {applicant.secondaryRelationship || 'Family Member'}
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-slate-400">Name</span>
+                            <span className="font-semibold text-slate-700">{applicant.secondaryFirstName} {applicant.secondaryLastName}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-slate-400">Date of Birth</span>
+                            <span className="font-semibold text-slate-700">{applicant.secondaryDob || 'N/A'}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-slate-400">Passport</span>
+                            <span className="font-semibold text-slate-700">{applicant.secondaryPassport || 'N/A'}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-slate-400">Contact Number</span>
+                            <span className="font-semibold text-slate-700">
+                              {applicant.secondaryContactNumber ? `${applicant.secondaryContactCode || ''} ${applicant.secondaryContactNumber}` : 'N/A'}
+                            </span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-slate-400">Email Address</span>
+                            <span className="font-semibold text-slate-700">{applicant.secondaryEmail || 'N/A'}</span>
+                          </div>
+                          <div className="flex flex-col md:col-span-3">
+                            <span className="text-xs font-bold text-slate-400">Address</span>
+                            <span className="font-semibold text-slate-700">{applicant.secondaryAddress || 'N/A'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               )}
@@ -1218,7 +1550,7 @@ export default function LeadDetail() {
         )}
 
         {/* ================= TAB 5: DOCUMENTS ================= */}
-        {/* {activeTab === 'documents' && (
+        {activeTab === 'documents' && (
           <div className="space-y-6">
             <div className="flex items-center space-x-2 border-b pb-2 mb-4">
               <FileText className="w-5 h-5 text-indigo-600" />
@@ -1256,12 +1588,15 @@ export default function LeadDetail() {
                                 {doc.name || doc.originalFileName}
                               </a>
                             </div>
-                            <button
-                              onClick={() => handleDeleteDoc(doc._id)}
-                              className="text-red-400 hover:text-red-600 p-0.5 hover:bg-red-50 rounded"
-                            >
-                              ✕
-                            </button>
+                            {isCEO && (
+                              <button
+                                onClick={() => handleDeleteDoc(doc._id)}
+                                className="text-red-400 hover:text-red-600 p-0.5 hover:bg-red-50 rounded"
+                              >
+                                ✕
+                              </button>
+                            )}
+
                           </li>
                         ))}
                       </ul>
@@ -1271,7 +1606,7 @@ export default function LeadDetail() {
               })}
             </div>
           </div>
-        )} */}
+        )}
 
         {/* ================= TAB 6: ACCOUNTS ================= */}
         {activeTab === 'accounts' && (
@@ -2325,6 +2660,243 @@ export default function LeadDetail() {
         leadId={id}
         onSuccess={() => fetchData()}
       />
+
+      {/* ─── ADD SERVICES DRAWER (Right Aligned) ────────────────────────── */}
+      {showAddServiceDrawer && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/50 backdrop-blur-sm transition-opacity">
+          <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col transform transition-transform animate-slide-in-right animate-duration-300">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200">
+              <h2 className="text-lg font-bold text-[#6366F1]">Add Services</h2>
+              <button
+                onClick={() => setShowAddServiceDrawer(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <form id="add-service-form" onSubmit={handleAddServiceSave} className="space-y-5">
+                {/* Service Type */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">
+                    <span className="text-red-500 mr-0.5">*</span>Service Type
+                  </label>
+                  <select
+                    value={serviceType}
+                    onChange={(e) => {
+                      setServiceType(e.target.value);
+                      setSelectedService('');
+                    }}
+                    className="w-full rounded-lg border border-slate-300 py-2.5 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                    required
+                  >
+                    <option value="">Select Service Type</option>
+                    <option value="Student Visa">Student Visa</option>
+                    <option value="Work Permit">Work Permit</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                {/* Service */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">
+                    <span className="text-red-500 mr-0.5">*</span>Service
+                  </label>
+                  <select
+                    value={selectedService}
+                    onChange={(e) => setSelectedService(e.target.value)}
+                    disabled={!serviceType}
+                    className="w-full rounded-lg border border-slate-300 py-2.5 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white disabled:bg-slate-50 disabled:text-slate-400"
+                    required
+                  >
+                    <option value="">Select Service</option>
+                    {getServiceOptions().map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* User AssignTo */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">
+                    <span className="text-red-500 mr-0.5">*</span>User
+                  </label>
+                  <select
+                    value={assigneeUser}
+                    onChange={(e) => setAssigneeUser(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 py-2.5 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                    required
+                  >
+                    <option value="">Select User</option>
+                    {usersList.map((usr) => (
+                      <option key={usr._id} value={usr._id}>
+                        {usr.name} ({usr.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Followup Type */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">
+                    Followup Type
+                  </label>
+                  <select
+                    value={followupType}
+                    onChange={(e) => setFollowupType(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 py-2.5 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                  >
+                    <option value="">Select Followup Type</option>
+                    <option value="Call">Call</option>
+                    <option value="Meeting">Meeting</option>
+                    <option value="SMS">SMS</option>
+                    <option value="Email">Email</option>
+                    <option value="WhatsApp">WhatsApp</option>
+                  </select>
+                </div>
+
+                {/* Checkboxes: Email and SMS */}
+                <div className="flex items-center space-x-6 pt-2">
+                  <label className="flex items-center space-x-2 text-xs font-bold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sendEmail}
+                      onChange={(e) => setSendEmail(e.target.checked)}
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                    />
+                    <span>Send Email ?</span>
+                  </label>
+                  <label className="flex items-center space-x-2 text-xs font-bold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sendSms}
+                      onChange={(e) => setSendSms(e.target.checked)}
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                    />
+                    <span>Send SMS ?</span>
+                  </label>
+                </div>
+
+                {/* Comments */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">
+                    Comments
+                  </label>
+                  <textarea
+                    value={drawerComments}
+                    onChange={(e) => setDrawerComments(e.target.value)}
+                    rows={4}
+                    className="w-full rounded-lg border border-slate-300 py-2.5 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                    placeholder="Enter service details / comments"
+                  />
+                </div>
+              </form>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 bg-white border-t border-slate-200 flex justify-end space-x-3">
+              <button
+                type="submit"
+                form="add-service-form"
+                className="px-6 py-2.5 bg-[#6366F1] text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddServiceDrawer(false)}
+                className="px-6 py-2.5 border border-red-200 text-red-500 rounded-lg text-sm font-semibold hover:bg-red-50 transition-colors bg-white cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── CONFIRMATION OF DUPLICATE SERVICE MODAL (Centered) ────────────────────────── */}
+      {showDuplicateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-100 flex flex-col animate-scale-up">
+            {/* Header */}
+            <div className="px-6 py-4 bg-[#F3EEFD] border-b border-[#E9E1F9] flex justify-between items-center">
+              <h3 className="text-base font-bold text-slate-800 tracking-tight">Confirmation of Duplicate Service</h3>
+              <button
+                onClick={() => setShowDuplicateModal(false)}
+                className="p-1 rounded-full text-slate-450 hover:text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              <p className="text-sm font-semibold text-slate-600">
+                Lead is already Exist in the following Branches.
+              </p>
+
+              {/* Table */}
+              <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-sm">
+                <table className="min-w-full divide-y divide-slate-200 text-xs">
+                  <thead className="bg-[#FAF9FC]">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider">No.</th>
+                      <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider">BranchName</th>
+                      <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider">LeadCode</th>
+                      <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider">Created Date</th>
+                      <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider">Service</th>
+                      <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider">Assignee</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-150 text-slate-600">
+                    {duplicateLeads.map((dup, index) => (
+                      <tr key={dup.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-2.5">{index + 1}</td>
+                        <td className="px-4 py-2.5">{dup.branchName}</td>
+                        <td className="px-4 py-2.5 font-semibold text-[#6366F1]">{dup.leadCode}</td>
+                        <td className="px-4 py-2.5">
+                          {dup.createdAt ? format(new Date(dup.createdAt), 'dd-MMM-yyyy HH:mm') : 'N/A'}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {serviceLabels[dup.service] || dup.service}
+                        </td>
+                        <td className="px-4 py-2.5">{dup.assigneeName}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="pt-2 text-sm font-semibold text-slate-700">
+                Do you want to Continue ?
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-[#FAF9FC] border-t border-slate-150 flex justify-start space-x-3">
+              <button
+                onClick={executeDuplication}
+                className="inline-flex items-center px-6 py-2 bg-[#6366F1] hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors cursor-pointer"
+              >
+                <Check className="w-4 h-4 mr-2" />
+                Yes
+              </button>
+              <button
+                onClick={() => setShowDuplicateModal(false)}
+                className="inline-flex items-center px-6 py-2 border border-red-200 bg-white hover:bg-red-50 text-red-500 rounded-lg text-sm font-semibold transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4 mr-2" />
+                No
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

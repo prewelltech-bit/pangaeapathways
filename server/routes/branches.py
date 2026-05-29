@@ -23,11 +23,21 @@ def get_branches(current_user=Depends(get_current_user)):
     if role == "CEO":
         cursor = db.branches.find().sort("country", 1)
     elif role == "DIRECTOR":
-        cursor = db.branches.find({"country": current_user.get("country")}).sort("name", 1)
+        branch_id = current_user.get("branchId")
+        if branch_id:
+            try:
+                cursor = db.branches.find({"_id": ObjectId(branch_id)})
+            except Exception:
+                cursor = db.branches.find({"_id": branch_id})
+        else:
+            cursor = db.branches.find({"country": current_user.get("country")}).sort("name", 1)
     elif role == "HR":
         branch_id = current_user.get("branchId")
         if branch_id:
-            cursor = db.branches.find({"_id": branch_id})
+            try:
+                cursor = db.branches.find({"_id": ObjectId(branch_id)})
+            except Exception:
+                cursor = db.branches.find({"_id": branch_id})
         elif current_user.get("country"):
             cursor = db.branches.find({"country": current_user.get("country")}).sort("name", 1)
         else:
@@ -35,7 +45,10 @@ def get_branches(current_user=Depends(get_current_user)):
     elif role == "BRANCH_ADMIN":
         branch_id = current_user.get("branchId")
         if branch_id:
-            cursor = db.branches.find({"_id": branch_id})
+            try:
+                cursor = db.branches.find({"_id": ObjectId(branch_id)})
+            except Exception:
+                cursor = db.branches.find({"_id": branch_id})
         else:
             return []
     else:
@@ -81,3 +94,39 @@ def get_branch(branch_id: str, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Branch not found")
     branch["_id"] = str(branch["_id"])
     return branch
+
+
+@router.delete("/{branch_id}")
+def delete_branch(branch_id: str, current_user=Depends(get_current_user)):
+    """
+    CEO → can delete any branch
+    Director → can only delete branches in their own country
+    Branch Admin → no access
+    """
+    if current_user["role"] in ("BRANCH_ADMIN", "ADMIN"):
+        raise HTTPException(status_code=403, detail="Branch Admins cannot delete branches")
+
+    try:
+        oid = ObjectId(branch_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid branch ID")
+
+    branch = db.branches.find_one({"_id": oid})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+
+    # Directors can only delete branches in their own country
+    if current_user["role"] == "DIRECTOR":
+        if branch.get("country") != current_user.get("country"):
+            raise HTTPException(status_code=403, detail="Directors can only delete branches in their own country")
+
+    # Safety check: do not delete if users are assigned to this branch
+    assigned_users = db.users.count_documents({"branchId": oid})
+    if assigned_users > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete branch — {assigned_users} user(s) are still assigned to it. Reassign them first."
+        )
+
+    db.branches.delete_one({"_id": oid})
+    return {"message": "Branch deleted successfully"}

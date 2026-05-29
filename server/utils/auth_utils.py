@@ -4,7 +4,12 @@ import bcrypt
 import os
 import pyotp
 
-SECRET_KEY = os.environ.get("SESSION_SECRET", "super-secret-key-change-me-later-to-32-chars")
+SECRET_KEY = os.environ.get("SESSION_SECRET")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SESSION_SECRET environment variable is not set. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+    )
 ALGORITHM = "HS256"
 
 def hash_password(password: str) -> str:

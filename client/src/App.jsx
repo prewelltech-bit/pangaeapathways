@@ -14,6 +14,7 @@ import Agreements from './pages/Agreements';
 import CreateAccount from './pages/CreateAccount';
 import ManageDirectors from './pages/ManageDirectors';
 import ManageBranchAdmins from './pages/ManageBranchAdmins';
+import ManageBranches from './pages/ManageBranches';
 import Attendance from './pages/Attendance';
 import LeadTransfer from './pages/LeadTransfer';
 import Profile from './pages/Profile';
@@ -67,6 +68,11 @@ function App() {
                 {/* CEO only */}
                 <Route element={<ProtectedRoute roles={['CEO']} />}>
                   <Route path="/directors" element={<ManageDirectors />} />
+                </Route>
+
+                {/* CEO + Director — manage branches */}
+                <Route element={<ProtectedRoute roles={['CEO', 'DIRECTOR']} />}>
+                  <Route path="/branches" element={<ManageBranches />} />
                 </Route>
 
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />

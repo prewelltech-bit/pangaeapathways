@@ -1,5 +1,6 @@
 import os
 import shutil
+import pathlib
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
 from bson import ObjectId
@@ -12,6 +13,10 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "public", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# ─── File validation constants ────────────────────────────────────────────────
+ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png", ".gif", ".xlsx", ".xls"}
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
 @router.post("/case/{case_id}")
 async def upload_document(
     case_id: str, 
@@ -22,7 +27,18 @@ async def upload_document(
     case = db.immigration_cases.find_one({"_id": ObjectId(case_id)})
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
-        
+
+    # Validate file type
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"File type '{ext}' is not allowed. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}")
+
+    # Validate file size
+    contents = await file.read()
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 10 MB.")
+    await file.seek(0)
+
     safe_filename = f"{int(datetime.now().timestamp())}_{file.filename.replace(' ', '_')}"
     case_dir = os.path.join(UPLOAD_DIR, "cases", case_id)
     os.makedirs(case_dir, exist_ok=True)
@@ -64,11 +80,15 @@ def download_document(doc_id: str, current_user = Depends(get_current_user)):
     return FileResponse(path=file_path, filename=doc["originalFileName"])
 
 @router.get("/cases/{case_id}/{filename}")
-def serve_case_file(case_id: str, filename: str):
-    file_path = os.path.join(UPLOAD_DIR, "cases", case_id, filename)
-    if not os.path.exists(file_path):
+def serve_case_file(case_id: str, filename: str, current_user=Depends(get_current_user)):
+    # Prevent path traversal: resolve final path and ensure it stays within UPLOAD_DIR
+    base = pathlib.Path(UPLOAD_DIR).resolve()
+    target = (base / "cases" / case_id / filename).resolve()
+    if not str(target).startswith(str(base)):
+        raise HTTPException(status_code=400, detail="Invalid file path")
+    if not target.exists():
         raise HTTPException(status_code=404, detail="File missing on disk")
-    return FileResponse(path=file_path, filename=filename)
+    return FileResponse(path=str(target), filename=filename)
 
 @router.post("/lead/{lead_id}")
 async def upload_lead_document(
@@ -81,7 +101,18 @@ async def upload_lead_document(
     lead = db.leads.find_one({"_id": ObjectId(lead_id)})
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-        
+
+    # Validate file type
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"File type '{ext}' is not allowed. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}")
+
+    # Validate file size
+    contents = await file.read()
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 10 MB.")
+    await file.seek(0)
+
     safe_filename = f"{int(datetime.now().timestamp())}_{file.filename.replace(' ', '_')}"
     lead_dir = os.path.join(UPLOAD_DIR, "leads", lead_id)
     os.makedirs(lead_dir, exist_ok=True)
@@ -119,9 +150,9 @@ def delete_document(doc_id: str, current_user = Depends(get_current_user)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     
-    # Check permissions
-    if current_user["role"] not in ["CEO", "DIRECTOR", "ADMIN", "BRANCH_ADMIN"] and str(doc["uploadedBy"]) != str(current_user["_id"]):
-        raise HTTPException(status_code=403, detail="Not authorized to delete this document")
+    # Only CEO can delete documents
+    if current_user["role"] != "CEO":
+        raise HTTPException(status_code=403, detail="Only CEO can delete documents")
     
     file_path = os.path.join(UPLOAD_DIR, doc["storedPath"])
     if os.path.exists(file_path):

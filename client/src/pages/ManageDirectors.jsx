@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Globe, Users, UserCheck, UserX, AlertCircle } from 'lucide-react';
+import { Globe, Users, UserCheck, UserX, AlertCircle, Trash2 } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
 import './ManageDirectors.css';
 
@@ -8,7 +8,11 @@ export default function ManageDirectors() {
   const { isCEO } = useAuth();
   const [directors, setDirectors] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [actionMsg, setActionMsg] = useState('');
+  const [actionMsg, setActionMsg] = useState({ type: '', text: '' });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [countryFilter, setCountryFilter] = useState('all');
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // userId pending delete
 
   const fetchDirectors = async () => {
     try {
@@ -27,12 +31,25 @@ export default function ManageDirectors() {
     try {
       const endpoint = isActive ? 'deactivate' : 'activate';
       await axios.patch(`/api/users/${userId}/${endpoint}`, {}, { withCredentials: true });
-      setActionMsg(`User ${isActive ? 'deactivated' : 'activated'} successfully`);
+      setActionMsg({ type: 'success', text: `User ${isActive ? 'deactivated' : 'activated'} successfully` });
       fetchDirectors();
-      setTimeout(() => setActionMsg(''), 3000);
+      setTimeout(() => setActionMsg({ type: '', text: '' }), 3000);
     } catch (err) {
-      setActionMsg(err.response?.data?.detail || 'Action failed');
+      setActionMsg({ type: 'error', text: err.response?.data?.detail || 'Action failed' });
     }
+  };
+
+  const deleteDirector = async (userId) => {
+    try {
+      await axios.delete(`/api/users/${userId}`, { withCredentials: true });
+      setActionMsg({ type: 'success', text: '✅ Director deleted permanently.' });
+      setDeleteConfirm(null);
+      fetchDirectors();
+    } catch (err) {
+      setActionMsg({ type: 'error', text: err.response?.data?.detail || 'Failed to delete director.' });
+      setDeleteConfirm(null);
+    }
+    setTimeout(() => setActionMsg({ type: '', text: '' }), 4000);
   };
 
   if (!isCEO) {
@@ -44,8 +61,26 @@ export default function ManageDirectors() {
     );
   }
 
+  // Extract unique countries
+  const countries = Array.from(new Set(directors.map(d => d.country).filter(Boolean))).sort();
+
+  // Filter directors
+  const filteredDirectors = directors.filter(d => {
+    const matchesSearch = !searchTerm || 
+      d.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      d.email?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = statusFilter === 'all' || 
+      (statusFilter === 'active' && d.isActive !== false) || 
+      (statusFilter === 'inactive' && d.isActive === false);
+      
+    const matchesCountry = countryFilter === 'all' || d.country === countryFilter;
+    
+    return matchesSearch && matchesStatus && matchesCountry;
+  });
+
   // Group by country
-  const byCountry = directors.reduce((acc, d) => {
+  const byCountry = filteredDirectors.reduce((acc, d) => {
     const c = d.country || 'Unassigned';
     if (!acc[c]) acc[c] = [];
     acc[c].push(d);
@@ -65,9 +100,48 @@ export default function ManageDirectors() {
         </div>
       </div>
 
-      {actionMsg && (
-        <div className="manage-directors-action-msg">
-          {actionMsg}
+      {actionMsg.text && (
+        <div className={`manage-directors-action-msg ${actionMsg.type}`}>
+          {actionMsg.text}
+        </div>
+      )}
+
+      {/* Filters Bar */}
+      {!loading && directors.length > 0 && (
+        <div className="filters-container">
+          <div className="filter-group search-group">
+            <label className="filter-label">Search Director</label>
+            <input 
+              type="text" 
+              placeholder="Search by name or email..." 
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="filter-input"
+            />
+          </div>
+          <div className="filter-group">
+            <label className="filter-label">Country</label>
+            <select 
+              value={countryFilter}
+              onChange={e => setCountryFilter(e.target.value)}
+              className="filter-select"
+            >
+              <option value="all">All Countries</option>
+              {countries.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="filter-group">
+            <label className="filter-label">Status</label>
+            <select 
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="filter-select"
+            >
+              <option value="all">All Statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
         </div>
       )}
 
@@ -77,6 +151,11 @@ export default function ManageDirectors() {
         <div className="manage-directors-empty">
           <Users size={40} className="manage-directors-empty-icon" />
           <p>No directors yet. Use "Create Account" to add the first director.</p>
+        </div>
+      ) : filteredDirectors.length === 0 ? (
+        <div className="manage-directors-empty">
+          <Users size={40} className="manage-directors-empty-icon" />
+          <p>No directors match your filters.</p>
         </div>
       ) : (
         Object.entries(byCountry).map(([country, dirs]) => (
@@ -99,6 +178,11 @@ export default function ManageDirectors() {
                     <div>
                       <div className="manage-directors-info-name">{d.name}</div>
                       <div className="manage-directors-info-email">{d.email}</div>
+                      {d.branchName && (
+                        <div style={{ fontSize: '0.8rem', color: '#0284c7', fontWeight: 600, marginTop: '0.2rem' }}>
+                          🏢 {d.branchName}
+                        </div>
+                      )}
                       {d.googleId && <div className="manage-directors-info-google">🔐 Google linked</div>}
                     </div>
                   </div>
@@ -113,6 +197,21 @@ export default function ManageDirectors() {
                     >
                       {d.isActive !== false ? <UserX size={16} /> : <UserCheck size={16} />}
                     </button>
+                    {deleteConfirm === d._id ? (
+                      <div className="manage-directors-delete-confirm">
+                        <span>Delete?</span>
+                        <button className="manage-directors-confirm-yes" onClick={() => deleteDirector(d._id)}>Yes</button>
+                        <button className="manage-directors-confirm-no" onClick={() => setDeleteConfirm(null)}>No</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeleteConfirm(d._id)}
+                        title="Delete director permanently"
+                        className="manage-directors-action-btn delete-btn"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

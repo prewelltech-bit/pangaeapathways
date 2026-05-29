@@ -10,6 +10,21 @@ const COUNTRIES = [
   'New Zealand', 'Germany', 'France', 'UAE', 'Singapore', 'Other'
 ];
 
+const parseErrorDetail = (detail) => {
+  if (!detail) return '';
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(d => {
+      const field = d.loc ? d.loc[d.loc.length - 1] : '';
+      return `${field ? field + ': ' : ''}${d.msg || JSON.stringify(d)}`;
+    }).join(', ');
+  }
+  if (typeof detail === 'object') {
+    return detail.message || detail.msg || JSON.stringify(detail);
+  }
+  return String(detail);
+};
+
 export default function CreateAccount() {
   const { user, isCEO, isDirector, createUserByAdmin } = useAuth();
   const [branches, setBranches] = useState([]);
@@ -19,11 +34,20 @@ export default function CreateAccount() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const [countriesList, setCountriesList] = useState([]);
+  const [statesList, setStatesList] = useState([]);
+  const [citiesList, setCitiesList] = useState([]);
+  const [loadingStates, setLoadingStates] = useState(false);
+  const [loadingCities, setLoadingCities] = useState(false);
+
   const [form, setForm] = useState({
     name: '',
     email: '',
     password: '',
     country: isCEO ? '' : (user?.country || ''),
+    state: '',
+    city: '',
+    area: '',
     branchId: '',
   });
 
@@ -32,20 +56,89 @@ export default function CreateAccount() {
       axios.get('/api/meta/branches', { withCredentials: true }).then(res => {
         setBranches(res.data);
       }).catch(console.error);
+
+      axios.get('/api/meta/countries').then(res => {
+        setCountriesList(res.data || []);
+      }).catch(err => {
+        console.error("Could not fetch countries", err);
+      });
     }
   }, [isCEO, isDirector]);
+
+  const handleLocationChange = async (field, value) => {
+    if (field === 'country') {
+      setForm(prev => ({
+        ...prev,
+        country: value,
+        state: '',
+        city: '',
+        area: '',
+        branchId: ''
+      }));
+      setStatesList([]);
+      setCitiesList([]);
+
+      if (value) {
+        setLoadingStates(true);
+        try {
+          const res = await axios.post('/api/meta/states', { country: value });
+          setStatesList(res.data.states || []);
+        } catch (err) {
+          console.error("Error fetching states", err);
+        } finally {
+          setLoadingStates(false);
+        }
+      }
+    } else if (field === 'state') {
+      setForm(prev => ({
+        ...prev,
+        state: value,
+        city: '',
+        area: '',
+        branchId: ''
+      }));
+      setCitiesList([]);
+
+      if (value && form.country) {
+        setLoadingCities(true);
+        try {
+          const res = await axios.post('/api/meta/cities', {
+            country: form.country,
+            state: value
+          });
+          setCitiesList(res.data.cities || []);
+        } catch (err) {
+          console.error("Error fetching cities", err);
+        } finally {
+          setLoadingCities(false);
+        }
+      }
+    } else if (field === 'city') {
+      setForm(prev => ({
+        ...prev,
+        city: value,
+        branchId: ''
+      }));
+    } else {
+      setForm(prev => ({
+        ...prev,
+        [field]: value
+      }));
+    }
+  };
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
   const isFormValidForSignup = () => {
     if (isCEO) {
-      if (role === 'DIRECTOR') return !!form.country;
+      if (role === 'DIRECTOR') return !!form.branchId && !!form.country && !!form.state && !!form.city && !!form.area;
       return true;
     } else {
       if (role === 'HR') return true;
       return !!form.branchId;
     }
   };
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -58,18 +151,24 @@ export default function CreateAccount() {
         email: form.email,
         password: form.password,
         role: role,
-        country: role === 'DIRECTOR' ? form.country : (isCEO ? (form.country || undefined) : user?.country),
-        branchId: role !== 'DIRECTOR' && form.branchId ? form.branchId : undefined,
+        branchId: (role === 'DIRECTOR' || role !== 'HR') && form.branchId ? form.branchId : undefined,
+        country: role === 'DIRECTOR' 
+          ? (form.country || branches.find(b => b._id === form.branchId)?.country) 
+          : (isCEO ? (form.country || undefined) : user?.country),
+        state: role === 'DIRECTOR' ? form.state : undefined,
+        city: role === 'DIRECTOR' ? form.city : undefined,
+        area: role === 'DIRECTOR' ? form.area : undefined,
       };
       await createUserByAdmin(payload);
       setSuccess(`✅ ${role === 'DIRECTOR' ? 'Director' : role === 'HR' ? 'HR Manager' : 'Branch Admin'} account created! They can now log in with email/password or Google.`);
-      setForm({ name: '', email: '', password: '', country: isCEO ? '' : (user?.country || ''), branchId: '' });
+      setForm({ name: '', email: '', password: '', country: isCEO ? '' : (user?.country || ''), state: '', city: '', area: '', branchId: '' });
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to create account');
+      setError(parseErrorDetail(err.response?.data?.detail) || 'Failed to create account');
     } finally {
       setLoading(false);
     }
   };
+
 
   const handleGoogleSuccess = async (credentialResponse) => {
     setError('');
@@ -79,16 +178,22 @@ export default function CreateAccount() {
       await axios.post('/api/auth/google/create-account', {
         credential: credentialResponse.credential,
         role: role,
-        country: role === 'DIRECTOR' ? form.country : (isCEO ? (form.country || undefined) : user?.country),
-        branchId: role !== 'DIRECTOR' && form.branchId ? form.branchId : undefined,
+        branchId: (role === 'DIRECTOR' || role !== 'HR') && form.branchId ? form.branchId : undefined,
+        country: role === 'DIRECTOR'
+          ? (form.country || branches.find(b => b._id === form.branchId)?.country)
+          : (isCEO ? (form.country || undefined) : user?.country),
+        state: role === 'DIRECTOR' ? form.state : undefined,
+        city: role === 'DIRECTOR' ? form.city : undefined,
+        area: role === 'DIRECTOR' ? form.area : undefined,
       }, { withCredentials: true });
       setSuccess(`✅ ${role === 'DIRECTOR' ? 'Director' : role === 'HR' ? 'HR Manager' : 'Branch Admin'} Google account linked and created!`);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to create account via Google');
+      setError(parseErrorDetail(err.response?.data?.detail) || 'Failed to create account via Google');
     } finally {
       setLoading(false);
     }
   };
+
 
   if (!isCEO && !isDirector) {
     return (
@@ -173,12 +278,87 @@ export default function CreateAccount() {
           </select>
         </div>
 
-        {isCEO && (
+        {isCEO && role === 'DIRECTOR' && (
+          <>
+            {/* Country Selector */}
+            <div className="create-account-field">
+              <label className="create-account-label">
+                <Globe size={14} /> Assign Country <span style={{ color: 'red' }}>*</span>
+              </label>
+              <select
+                value={form.country}
+                onChange={(e) => handleLocationChange('country', e.target.value)}
+                required
+                className="create-account-input"
+              >
+                <option value="">— Select Country —</option>
+                {countriesList.map(c => (
+                  <option key={c.code} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* State Selector */}
+            <div className="create-account-field">
+              <label className="create-account-label">
+                <Globe size={14} /> Assign State <span style={{ color: 'red' }}>*</span>
+              </label>
+              <select
+                value={form.state}
+                onChange={(e) => handleLocationChange('state', e.target.value)}
+                disabled={!form.country || loadingStates}
+                required
+                className="create-account-input"
+              >
+                <option value="">{loadingStates ? 'Loading states...' : '— Select State —'}</option>
+                {statesList.map(st => (
+                  <option key={st} value={st}>{st}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* City Selector */}
+            <div className="create-account-field">
+              <label className="create-account-label">
+                <Globe size={14} /> Assign City <span style={{ color: 'red' }}>*</span>
+              </label>
+              <select
+                value={form.city}
+                onChange={(e) => handleLocationChange('city', e.target.value)}
+                disabled={!form.state || loadingCities}
+                required
+                className="create-account-input"
+              >
+                <option value="">{loadingCities ? 'Loading cities...' : '— Select City —'}</option>
+                {citiesList.map(ct => (
+                  <option key={ct} value={ct}>{ct}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Area Input */}
+            <div className="create-account-field">
+              <label className="create-account-label">
+                <Building2 size={14} /> Assign Area <span style={{ color: 'red' }}>*</span>
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Ring Road, Mall Area"
+                value={form.area}
+                onChange={(e) => handleLocationChange('area', e.target.value)}
+                required
+                className="create-account-input"
+              />
+            </div>
+          </>
+        )}
+
+        {isCEO && role !== 'DIRECTOR' && (
           <div className="create-account-field">
             <label className="create-account-label">
-              <Globe size={14} /> Assign Country {role === 'DIRECTOR' && <span style={{ color: 'red' }}>*</span>}
+              <Globe size={14} /> Assign Country
             </label>
-            <select name="country" value={form.country} onChange={handleChange} required={role === 'DIRECTOR'} className="create-account-input">
+            <select name="country" value={form.country} onChange={handleChange} className="create-account-input">
               <option value="">— {role === 'HR' ? 'Global (No Country Scope)' : 'Select country'} —</option>
               {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -192,19 +372,41 @@ export default function CreateAccount() {
           </div>
         )}
 
-        {role !== 'DIRECTOR' && (
+        {role !== 'HR' && (
           <div className="create-account-field">
             <label className="create-account-label">
-              <Building2 size={14} /> Assign Branch {role !== 'HR' && <span style={{ color: 'red' }}>*</span>}
+              <Building2 size={14} /> Assign Branch <span style={{ color: 'red' }}>*</span>
             </label>
-            <select name="branchId" value={form.branchId} onChange={handleChange} required={role !== 'HR'} className="create-account-input">
-              <option value="">— {role === 'HR' ? 'Country-wide (No Branch Scope)' : 'Select branch'} —</option>
+            <select name="branchId" value={form.branchId} onChange={handleChange} required className="create-account-input">
+              <option value="">— Select branch —</option>
+              {branches
+                .filter(b => {
+                  if (role === 'DIRECTOR') {
+                    if (form.city) return b.city?.toLowerCase() === form.city.toLowerCase();
+                    if (form.country) return b.country?.toLowerCase() === form.country.toLowerCase();
+                    return true;
+                  }
+                  return !isCEO || !form.country || b.country === form.country;
+                })
+                .map(b => <option key={b._id} value={b._id}>{b.name} ({b.city})</option>)}
+            </select>
+          </div>
+        )}
+
+        {role === 'HR' && (
+          <div className="create-account-field">
+            <label className="create-account-label">
+              <Building2 size={14} /> Assign Branch
+            </label>
+            <select name="branchId" value={form.branchId} onChange={handleChange} className="create-account-input">
+              <option value="">— Country-wide (No Branch Scope) —</option>
               {branches
                 .filter(b => !isCEO || !form.country || b.country === form.country)
                 .map(b => <option key={b._id} value={b._id}>{b.name} ({b.city})</option>)}
             </select>
           </div>
         )}
+
 
         {mode === 'email' && (
           <form onSubmit={handleSubmit} className="create-account-form">

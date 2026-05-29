@@ -83,9 +83,15 @@ export default function Layout() {
       roles: ['CEO'],
     },
     {
+      name: 'Branches',
+      path: '/branches',
+      icon: Building2,
+      roles: ['CEO', 'DIRECTOR'],
+    },
+    {
       name: 'Branch Admins',
       path: '/branch-admins',
-      icon: Building2,
+      icon: Shield,
       roles: ['CEO', 'DIRECTOR'],
     },
     {
@@ -131,7 +137,7 @@ export default function Layout() {
             <img src={logo} alt="" />
           </div>
           <span className="layout-logo-text">
-            Pangaea CRM
+            PANGAEA PATHWAYS
           </span>
         </div>
 

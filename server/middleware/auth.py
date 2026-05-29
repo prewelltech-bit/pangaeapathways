@@ -24,6 +24,12 @@ def get_current_user(request: Request):
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
+    # Check token version for revocation
+    token_version = payload.get("tokenVersion", 1)
+    user_token_version = user.get("tokenVersion", 1)
+    if token_version != user_token_version:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked/logged out")
+
     if not user.get("isActive", True):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated")
 

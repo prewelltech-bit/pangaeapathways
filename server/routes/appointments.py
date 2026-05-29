@@ -40,11 +40,15 @@ def _get_scoped_user_ids(current_user: dict):
     if role == "CEO":
         return None  # no filter
     elif role == "DIRECTOR":
-        subordinate_roles = ["BRANCH_ADMIN", "ADMIN", "HR", "DIRECTOR"]
-        users = db.users.find({
-            "country": current_user.get("country"),
-        })
-        return [u["_id"] for u in users]
+        branch_id = current_user.get("branchId")
+        if branch_id:
+            users = db.users.find({"branchId": branch_id})
+            return [u["_id"] for u in users]
+        else:
+            users = db.users.find({
+                "country": current_user.get("country"),
+            })
+            return [u["_id"] for u in users]
     elif role in ("BRANCH_ADMIN", "ADMIN"):
         branch_id = current_user.get("branchId")
         if branch_id:
@@ -183,10 +187,8 @@ def delete_appointment(appt_id: str, current_user=Depends(get_current_user)):
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
 
-    is_creator = str(appt.get("createdBy")) == str(current_user["_id"])
-    is_manager = current_user["role"] in ("CEO", "DIRECTOR")
-    if not is_creator and not is_manager:
-        raise HTTPException(status_code=403, detail="You can only delete your own appointments")
+    if current_user["role"] != "CEO":
+        raise HTTPException(status_code=403, detail="Only CEO can delete appointments")
 
     db.appointments.delete_one({"_id": ObjectId(appt_id)})
     return {"message": "Appointment deleted"}

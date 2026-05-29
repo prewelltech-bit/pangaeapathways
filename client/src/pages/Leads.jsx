@@ -6,6 +6,23 @@ import { format } from 'date-fns';
 import { useAuth } from '../lib/AuthContext';
 import FollowUpModal from '../components/FollowUpModal';
 
+const getServiceDisplayName = (prod) => {
+  const mapping = {
+    CANADA: 'Application + Student Visa - (Canada)',
+    USA: 'Application + Student Visa - (USA)',
+    UK: 'Application + Student Visa - (UK)',
+    EUROPE: 'Work Permit Europe',
+    AUSTRALIA: 'Application + Student Visa - (Australia)',
+    OTHER: 'Other Visa Service'
+  };
+  return mapping[prod] || prod || 'N/A';
+};
+
+const formatSource = (src) => {
+  if (!src) return 'N/A';
+  return src.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+};
+
 export default function Leads() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +58,16 @@ export default function Leads() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleStatusChange = async (leadId, newStatus) => {
+    try {
+      await axios.patch(`/api/leads/${leadId}`, { leadStatus: newStatus });
+      setLeads(prev => prev.map(l => l._id === leadId ? { ...l, leadStatus: newStatus } : l));
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update status');
     }
   };
 
@@ -172,11 +199,11 @@ export default function Leads() {
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-sky-100">
         <div className="hidden md:grid grid-cols-12 bg-amber-50 border-b border-amber-200 px-4 py-3 rounded-t-xl">
-          <div className="col-span-3 text-xs font-bold text-slate-700 uppercase tracking-wider">Lead</div>
+          <div className="col-span-2 text-xs font-bold text-slate-700 uppercase tracking-wider">Lead</div>
           <div className="col-span-3 text-xs font-bold text-slate-700 uppercase tracking-wider">Client</div>
-          <div className="col-span-2 text-xs font-bold text-slate-700 uppercase tracking-wider">Services</div>
+          <div className="col-span-3 text-xs font-bold text-slate-700 uppercase tracking-wider">Services</div>
           <div className="col-span-2 text-xs font-bold text-slate-700 uppercase tracking-wider">Status</div>
-          <div className="col-span-2 text-xs font-bold text-slate-700 uppercase tracking-wider text-right">Actions</div>
+          <div className="col-span-2 text-xs font-bold text-slate-700 uppercase tracking-wider text-right">Follow-up</div>
         </div>
 
         <div className="divide-y divide-slate-100">
@@ -196,71 +223,141 @@ export default function Leads() {
               <div
                 key={lead._id}
                 onClick={() => navigate(`/leads/${lead._id}`)}
-                className="grid grid-cols-1 md:grid-cols-12 px-4 py-4 hover:bg-sky-50/50 transition-colors items-start gap-2 md:gap-0 cursor-pointer"
-                style={{ borderLeft: '3px solid #38bdf8' }}
+                className="grid grid-cols-1 md:grid-cols-12 px-4 py-4 hover:bg-sky-50/50 transition-colors items-center gap-2 md:gap-0 cursor-pointer border-b border-slate-100"
+                style={{ borderLeft: '3px solid #C084FC' }}
               >
                 {/* LEAD */}
-                <div className="col-span-3">
-                  <Link to={`/leads/${lead._id}`} className="text-sm font-semibold text-sky-700 hover:text-sky-900 hover:underline">
-                    LEAD-{String(idx + 1 + (currentPage - 1) * perPage).padStart(4, '0')}
+                <div className="col-span-2 space-y-1">
+                  <Link 
+                    to={`/leads/${lead._id}`} 
+                    className="text-sm font-bold text-slate-800 hover:text-sky-700 transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    LEAD-{String(lead.leadNo || 1).padStart(4, '0')}
                   </Link>
-                  <div className="text-xs text-slate-500 mt-1 flex items-center">
-                    <Calendar className="w-3 h-3 mr-1" />
-                    {format(new Date(lead.createdAt), 'dd-MM-yyyy')}
-                    <span className="ml-2">{format(new Date(lead.createdAt), 'HH:mm')}</span>
+                  <div className="text-[11px] text-slate-500 font-medium">
+                    {format(new Date(lead.createdAt), 'dd-MM-yyyy HH:mm')}
                   </div>
-                  <div className="text-xs text-slate-400 mt-0.5">{lead.source?.replace('_', '-') || 'N/A'}</div>
+                  <div className="text-[11px] text-slate-400 font-semibold">{formatSource(lead.source)}</div>
                 </div>
 
                 {/* CLIENT */}
-                <div className="col-span-3">
-                  <div className="flex items-center">
-                    <span className="text-yellow-500 mr-1.5">★</span>
-                    <Link to={`/leads/${lead._id}`} className="text-sm font-semibold text-slate-800 hover:text-sky-700">
+                <div className="col-span-3 space-y-1">
+                  <div className="flex items-center space-x-2">
+                    {/* Star Badge */}
+                    <div className="relative flex items-center justify-center flex-shrink-0">
+                      <span className="text-yellow-500 text-[18px]">★</span>
+                      <span className="absolute text-[8px] font-black text-slate-800 mt-[2px]">
+                        {lead.leadQuality || '1'}
+                      </span>
+                    </div>
+                    <Link 
+                      to={`/leads/${lead._id}`} 
+                      className="text-sm font-bold text-slate-800 hover:text-sky-700 uppercase"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {lead.fullName}
                     </Link>
                   </div>
                   {lead.phone && (
-                    <div className="flex items-center text-xs text-slate-500 mt-1.5">
-                      <Phone className="w-3 h-3 mr-1.5 text-slate-400" />
+                    <div className="flex items-center text-xs text-slate-500 font-medium">
+                      <Phone className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
                       <span>{lead.phone}</span>
+                      <a
+                        href={`https://wa.me/${lead.phone.replace(/[^0-9]/g, '')}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ml-1.5 text-emerald-500 hover:text-emerald-600"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                          <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.73-1.455L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.625 1.451 5.403.002 9.775-4.366 9.777-9.772.001-2.618-1.017-5.08-2.868-6.932C16.33 2.05 13.873 1.03 11.26 1.03c-5.409 0-9.809 4.397-9.813 9.805 0 1.547.411 3.056 1.192 4.404l-.999 3.651 3.737-.98c1.37.747 2.808 1.144 4.27 1.144zm10.285-7.393c-.279-.14-1.651-.814-1.906-.907-.255-.094-.441-.14-.627.14-.186.279-.718.907-.88 1.092-.163.186-.325.21-.604.07-.279-.14-1.18-.435-2.247-1.387-.83-.74-1.39-1.653-1.553-1.932-.163-.279-.017-.43.122-.569.126-.125.279-.325.418-.487.14-.163.186-.279.279-.465.093-.186.047-.349-.023-.488-.07-.14-.627-1.511-.859-2.07-.226-.544-.455-.47-.627-.478-.162-.007-.348-.008-.534-.008-.186 0-.488.07-.743.349-.256.279-.976.953-.976 2.324 0 1.371.999 2.697 1.139 2.883.139.186 1.966 3.003 4.763 4.208.665.286 1.184.457 1.587.585.669.213 1.278.183 1.759.11.536-.081 1.651-.675 1.884-1.326.233-.651.233-1.21.163-1.325-.07-.11-.256-.15-.535-.29z" />
+                        </svg>
+                      </a>
                     </div>
                   )}
                   {lead.email && (
-                    <div className="flex items-center text-xs text-slate-500 mt-1">
-                      <Mail className="w-3 h-3 mr-1.5 text-slate-400" />
+                    <div className="flex items-center text-xs text-slate-500 font-medium">
+                      <Mail className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
                       <span className="truncate max-w-[160px]">{lead.email}</span>
+                    </div>
+                  )}
+                  {lead.visaExpiryDate && (
+                    <div className="flex items-center text-xs text-slate-500 font-medium">
+                      <Calendar className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
+                      <span>{format(new Date(lead.visaExpiryDate), 'dd-MM-yyyy')}</span>
                     </div>
                   )}
                 </div>
 
                 {/* SERVICES */}
-                <div className="col-span-2">
-                  <div className="text-sm text-slate-700">{lead.preferredVisa || lead.productLine?.replace('_', ' ') || 'N/A'}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">{lead.targetCountryPrimary || lead.productLine || ''}</div>
+                <div className="col-span-3 text-sm text-slate-700 font-bold">
+                  {getServiceDisplayName(lead.productLine)}
                 </div>
 
                 {/* STATUS */}
-                <div className="col-span-2">
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold border ${getStatusColor(lead.leadStatus)}`}>
-                    {lead.leadStatus?.replace('_', ' ')}
-                  </span>
+                <div className="col-span-2" onClick={(e) => e.stopPropagation()}>
+                  <div className="relative inline-block text-left">
+                    <select
+                      value={lead.leadStatus || 'NEW'}
+                      onChange={(e) => handleStatusChange(lead._id, e.target.value)}
+                      className="appearance-none bg-[#C084FC]/20 text-[#7E22CE] border border-[#C084FC]/30 rounded-xl pl-3 pr-8 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer shadow-sm min-w-[100px]"
+                    >
+                      <option value="NEW">New</option>
+                      <option value="CONTACTED">Assigned</option>
+                      <option value="QUALIFIED">Qualified</option>
+                      <option value="ON_HOLD">On Hold</option>
+                      <option value="LOST">Lost</option>
+                      <option value="CONVERTED">Converted</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-[#7E22CE]">
+                      <svg className="fill-current h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                        <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                      </svg>
+                    </div>
+                  </div>
                 </div>
 
-                {/* ACTIONS */}
-                <div className="col-span-2 flex items-center justify-end space-x-2 relative">
-                  <button onClick={() => navigate(`/leads/${lead._id}`)} className="text-xs text-sky-600 hover:text-sky-800 font-medium">
-                    + View
+                {/* FOLLOW-UP & ACTIONS */}
+                <div className="col-span-2 flex items-center justify-end space-x-3 relative" onClick={(e) => e.stopPropagation()}>
+                  {/* + Add Button */}
+                  <button
+                    onClick={() => {
+                      setSelectedLeadId(lead._id);
+                      setFollowUpModalOpen(true);
+                    }}
+                    className="inline-flex items-center text-xs font-bold text-slate-700 hover:text-slate-900 border border-slate-200 bg-white hover:bg-slate-50 px-2.5 py-1.5 rounded-lg shadow-sm transition-all"
+                  >
+                    + Add
                   </button>
+
+                  {/* Assignee Initials */}
+                  {lead.ownerName && lead.ownerName !== 'Unassigned' ? (
+                    <span
+                      className="w-7 h-7 rounded-full bg-[#EEEBFF] text-[#6366F1] text-xs font-black flex items-center justify-center border border-indigo-100 shadow-inner flex-shrink-0"
+                      title={`Assigned to: ${lead.ownerName}`}
+                    >
+                      {lead.ownerName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                    </span>
+                  ) : (
+                    <span
+                      className="w-7 h-7 rounded-full bg-slate-100 text-slate-500 text-xs font-black flex items-center justify-center border border-slate-200 shadow-inner flex-shrink-0"
+                      title="Unassigned"
+                    >
+                      UA
+                    </span>
+                  )}
+
+                  {/* Dot menu */}
                   <div className="relative">
                     <button
-                      onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === lead._id ? null : lead._id); }}
+                      onClick={() => setOpenMenuId(openMenuId === lead._id ? null : lead._id)}
                       className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
                     >
                       <MoreVertical className="w-4 h-4" />
                     </button>
                     {openMenuId === lead._id && (
-                      <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-50" onClick={(e) => e.stopPropagation()}>
+                      <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-50">
                         <button onClick={() => { navigate(`/leads/${lead._id}/edit`); setOpenMenuId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-sky-50 flex items-center">
                           <Edit className="w-3.5 h-3.5 mr-2 text-sky-600" /> Edit Lead
                         </button>

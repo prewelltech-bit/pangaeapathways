@@ -24,11 +24,17 @@ export default function LeadTransfer() {
     // Only fetch if CEO or Director
     if (isCEO || isDirector) {
       Promise.all([
-        axios.get('/api/users'),
-        axios.get('/api/meta/branches')
+        axios.get('/api/users').catch(err => {
+          console.error("Could not fetch users", err);
+          return { data: [] };
+        }),
+        axios.get('/api/meta/branches').catch(err => {
+          console.error("Could not fetch branches", err);
+          return { data: [] };
+        })
       ]).then(([usersRes, branchesRes]) => {
-        setUsers(usersRes.data);
-        setBranches(branchesRes.data);
+        setUsers(usersRes.data || []);
+        setBranches(branchesRes.data || []);
       }).catch(err => {
         console.error(err);
         setMessage({ type: 'error', text: 'Failed to load initial data.' });

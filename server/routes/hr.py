@@ -82,13 +82,14 @@ def list_attendance(current_user: dict = Depends(get_current_user)):
     if current_user["role"] == "CEO":
         query = {}
     elif current_user["role"] == "DIRECTOR":
-        # Director sees ONLY non-Director users in their country
+        # Director sees ONLY non-Director users in their branch
         # (Branch Admins, Admins, HR) — NOT other Directors
         subordinate_roles = ["BRANCH_ADMIN", "ADMIN", "HR"]
-        if current_user.get("branchId"):
+        branch_id = current_user.get("branchId")
+        if branch_id:
             users_in_branch = [
                 u["_id"] for u in db.users.find({
-                    "branchId": current_user["branchId"],
+                    "branchId": ObjectId(branch_id),
                     "role": {"$in": subordinate_roles}
                 })
             ]
@@ -140,13 +141,14 @@ def list_leaves(current_user: dict = Depends(get_current_user)):
     if current_user["role"] == "CEO":
         query = {}
     elif current_user["role"] == "DIRECTOR":
-        # Director sees ONLY non-Director users in their country
+        # Director sees ONLY non-Director users in their branch
         # (Branch Admins, Admins, HR) — NOT other Directors
         subordinate_roles = ["BRANCH_ADMIN", "ADMIN", "HR"]
-        if current_user.get("branchId"):
+        branch_id = current_user.get("branchId")
+        if branch_id:
             users_in_branch = [
                 u["_id"] for u in db.users.find({
-                    "branchId": current_user["branchId"],
+                    "branchId": ObjectId(branch_id),
                     "role": {"$in": subordinate_roles}
                 })
             ]
@@ -213,7 +215,11 @@ def update_leave_status(leave_id: str, payload: dict, current_user: dict = Depen
         subordinate_roles = ["BRANCH_ADMIN", "ADMIN", "HR"]
         if requester_role not in subordinate_roles:
             raise HTTPException(status_code=403, detail="You can only approve leaves for Branch Admins, Admins, and HR.")
-        if requester.get("country") != current_user.get("country"):
+        branch_id = current_user.get("branchId")
+        if branch_id:
+            if str(requester.get("branchId")) != str(branch_id):
+                raise HTTPException(status_code=403, detail="Cannot update leave for user outside your branch")
+        elif requester.get("country") != current_user.get("country"):
             raise HTTPException(status_code=403, detail="Cannot update leave for user outside your country")
 
     elif current_user["role"] == "HR":
@@ -262,7 +268,11 @@ def update_attendance_status(record_id: str, payload: dict, current_user: dict =
         subordinate_roles = ["BRANCH_ADMIN", "ADMIN", "HR"]
         if requester_role not in subordinate_roles:
             raise HTTPException(status_code=403, detail="You can only approve attendance for Branch Admins, Admins, and HR.")
-        if requester.get("country") != current_user.get("country"):
+        branch_id = current_user.get("branchId")
+        if branch_id:
+            if str(requester.get("branchId")) != str(branch_id):
+                raise HTTPException(status_code=403, detail="Cannot update attendance for user outside your branch")
+        elif requester.get("country") != current_user.get("country"):
             raise HTTPException(status_code=403, detail="Cannot update attendance for user outside your country")
 
     elif current_user["role"] == "HR":

@@ -2,6 +2,21 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 
+const parseErrorDetail = (detail) => {
+  if (!detail) return '';
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(d => {
+      const field = d.loc ? d.loc[d.loc.length - 1] : '';
+      return `${field ? field + ': ' : ''}${d.msg || JSON.stringify(d)}`;
+    }).join(', ');
+  }
+  if (typeof detail === 'object') {
+    return detail.message || detail.msg || JSON.stringify(detail);
+  }
+  return String(detail);
+};
+
 export default function Signup() {
   const [formData, setFormData] = useState({
     name: '',
@@ -26,7 +41,7 @@ export default function Signup() {
       await axios.post('/api/auth/signup', formData);
       navigate('/login');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Signup failed');
+      setError(parseErrorDetail(err.response?.data?.detail) || 'Signup failed');
     } finally {
       setLoading(false);
     }

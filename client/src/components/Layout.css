@@ -21,14 +21,15 @@
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
 }
 
 .layout-logo-icon {
-  width: 60px;
-  height: 80px;
+  width: 100px;
+  height: 90px;
   border-radius: 10px;
   /* background: linear-gradient(135deg, #0ea5e9, #6366f1); */
   display: flex;
@@ -45,6 +46,7 @@
   font-weight: 700;
   font-size: 1rem;
   letter-spacing: 0.02em;
+  font-family: 'Poppins', sans-serif;
 }
 
 .layout-nav {

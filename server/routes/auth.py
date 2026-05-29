@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 import pyotp
 
 from utils.db import db
-from utils.auth_utils import hash_password, verify_password, create_access_token, generate_totp_secret
+from utils.auth_utils import hash_password, verify_password, create_access_token, generate_totp_secret, decode_access_token
 from utils.google_auth import verify_google_token
 import random
 from models.schemas import (
@@ -22,6 +22,7 @@ from models.schemas import (
     ForgotPasswordRequest, VerifyForgotPasswordOTP, ResetPasswordRequest
 )
 from middleware.auth import get_current_user
+from utils.rate_limiter import limiter
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -36,7 +37,11 @@ def _serialize_user(user: dict) -> dict:
         "role": user["role"],
         "country": user.get("country"),
         "branchId": str(user["branchId"]) if user.get("branchId") else None,
+        "tokenVersion": user.get("tokenVersion", 1),
     }
+
+import os as _os
+_IS_PRODUCTION = _os.environ.get("ENV", "development") == "production"
 
 def create_session(user: dict, response: Response):
     """Create JWT session cookie and return user info."""
@@ -47,14 +52,15 @@ def create_session(user: dict, response: Response):
         value=token,
         httponly=True,
         max_age=7 * 24 * 3600,
-        samesite="lax"
+        samesite="lax",
+        secure=_IS_PRODUCTION,  # True in production, False in development
     )
     return {"ok": True, "role": user["role"], "country": user.get("country")}
 
 # ─── Standard Email/Password Login ────────────────────────────────────────────
 
 @router.post("/login")
-def login(creds: UserLogin, response: Response):
+def login(creds: UserLogin, response: Response, _rl=Depends(limiter.limit(5, 60))):
     user = db.users.find_one({"email": creds.email})
     if not user or not verify_password(creds.password, user.get("passwordHash", "")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -71,7 +77,7 @@ def login(creds: UserLogin, response: Response):
 # ─── Google OAuth: Sign In ─────────────────────────────────────────────────
 
 @router.post("/google/login")
-def google_login(req: GoogleAuthRequest, response: Response):
+def google_login(req: GoogleAuthRequest, response: Response, _rl=Depends(limiter.limit(5, 60))):
     """
     User signs in with Google. Verifies the ID token server-side,
     finds the user by googleId or email, creates a session.
@@ -129,10 +135,13 @@ def google_create_account(
     if req.role == "DIRECTOR":
         if current_user["role"] != "CEO":
             raise HTTPException(status_code=403, detail="Only CEO can create Director accounts")
-        if not req.country:
-            raise HTTPException(status_code=400, detail="Country is required for Director accounts")
-        country = req.country
-        branch_id = None
+        if not req.branchId:
+            raise HTTPException(status_code=400, detail="Branch is required for Director accounts")
+        branch = db.branches.find_one({"_id": ObjectId(req.branchId)})
+        if not branch:
+            raise HTTPException(status_code=404, detail="Branch not found")
+        country = branch.get("country")
+        branch_id = ObjectId(req.branchId)
 
     elif req.role in ("BRANCH_ADMIN", "ADMIN"):
         if current_user["role"] != "DIRECTOR":
@@ -177,6 +186,7 @@ def google_create_account(
     else:
         raise HTTPException(status_code=400, detail="Invalid role. Must be DIRECTOR, BRANCH_ADMIN, ADMIN, or HR")
 
+
     # Check not already registered
     if db.users.find_one({"$or": [{"email": google_data["email"]}, {"googleId": google_data["googleId"]}]}):
         raise HTTPException(status_code=400, detail="This Google account is already registered")
@@ -188,6 +198,9 @@ def google_create_account(
         "passwordHash": None,
         "role": req.role,
         "country": country,
+        "state": req.state,
+        "city": req.city,
+        "area": req.area,
         "branchId": branch_id,
         "createdBy": current_user["_id"],
         "emailVerifiedAt": datetime.now(timezone.utc),
@@ -223,10 +236,13 @@ def create_user_by_admin(
     if data.role == "DIRECTOR":
         if current_user["role"] != "CEO":
             raise HTTPException(status_code=403, detail="Only CEO can create Director accounts")
-        if not data.country:
-            raise HTTPException(status_code=400, detail="Country is required when creating a Director account")
-        country = data.country
-        branch_id = None
+        if not data.branchId:
+            raise HTTPException(status_code=400, detail="Branch is required when creating a Director account")
+        branch = db.branches.find_one({"_id": ObjectId(data.branchId)})
+        if not branch:
+            raise HTTPException(status_code=404, detail="Branch not found")
+        country = data.country or branch.get("country")
+        branch_id = ObjectId(data.branchId)
 
     elif data.role in ("BRANCH_ADMIN", "ADMIN"):
         if current_user["role"] != "DIRECTOR":
@@ -269,6 +285,7 @@ def create_user_by_admin(
     else:
         raise HTTPException(status_code=400, detail="Invalid role. Must be DIRECTOR, BRANCH_ADMIN, ADMIN, or HR")
 
+
     if db.users.find_one({"email": data.email}):
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -279,6 +296,9 @@ def create_user_by_admin(
         "googleId": None,
         "role": data.role,
         "country": country,
+        "state": data.state,
+        "city": data.city,
+        "area": data.area,
         "branchId": branch_id,
         "createdBy": current_user["_id"],
         "emailVerifiedAt": datetime.now(timezone.utc),
@@ -295,14 +315,22 @@ def create_user_by_admin(
 # ─── Forgot Password / Reset Password ──────────────────────────────────────────
 
 @router.post("/forgot-password")
-def forgot_password(req: ForgotPasswordRequest):
+def forgot_password(req: ForgotPasswordRequest, _rl=Depends(limiter.limit(3, 60))):
     user = db.users.find_one({"email": req.email})
     if not user:
         # We still return success to prevent email enumeration
         return {"message": "If an account exists, an OTP has been sent."}
         
     otp = str(random.randint(100000, 999999))
-    print(f"\n{'='*50}\n[DEV] OTP FOR {req.email} IS: {otp}\n{'='*50}\n")
+    # Try sending via real SMTP first
+    from utils.email_utils import send_otp_email
+    email_sent = send_otp_email(req.email, otp)
+    
+    if not email_sent:
+        # Fallback for development/testing: print the OTP in the server console
+        print(f"\n========================================================")
+        print(f"[DEV FALLBACK] PASSWORD RESET OTP FOR {req.email} IS: {otp}")
+        print(f"========================================================\n")
     
     # Store OTP with a 15-minute expiration
     db.passwordResets.update_one(
@@ -320,7 +348,7 @@ def forgot_password(req: ForgotPasswordRequest):
     return {"message": "If an account exists, an OTP has been sent."}
 
 @router.post("/verify-reset-otp")
-def verify_reset_otp(req: VerifyForgotPasswordOTP):
+def verify_reset_otp(req: VerifyForgotPasswordOTP, _rl=Depends(limiter.limit(5, 60))):
     reset_doc = db.passwordResets.find_one({"email": req.email})
     if not reset_doc:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP.")
@@ -337,7 +365,7 @@ def verify_reset_otp(req: VerifyForgotPasswordOTP):
     return {"message": "OTP verified successfully."}
 
 @router.post("/reset-password")
-def reset_password(req: ResetPasswordRequest):
+def reset_password(req: ResetPasswordRequest, _rl=Depends(limiter.limit(3, 60))):
     reset_doc = db.passwordResets.find_one({"email": req.email})
     if not reset_doc:
         raise HTTPException(status_code=400, detail="Invalid or expired request.")
@@ -356,7 +384,10 @@ def reset_password(req: ResetPasswordRequest):
         
     db.users.update_one(
         {"_id": user["_id"]},
-        {"$set": {"passwordHash": hash_password(req.newPassword)}}
+        {
+            "$set": {"passwordHash": hash_password(req.newPassword)},
+            "$inc": {"tokenVersion": 1}
+        }
     )
     
     # Consume OTP
@@ -367,8 +398,8 @@ def reset_password(req: ResetPasswordRequest):
 # ─── MFA ──────────────────────────────────────────────────────────────────────
 
 @router.post("/mfa")
-def verify_mfa(req: Request, response: Response, mfa_data: VerifyMfa):
-    user_id_str = req.cookies.get("pangaea_mfa_pending")
+def verify_mfa(request: Request, response: Response, mfa_data: VerifyMfa, _rl=Depends(limiter.limit(10, 60))):
+    user_id_str = request.cookies.get("pangaea_mfa_pending")
     if not user_id_str:
         user = db.users.find_one({"email": mfa_data.email})
     else:
@@ -409,7 +440,18 @@ def totp_disable(current_user=Depends(get_current_user)):
 # ─── Session ──────────────────────────────────────────────────────────────────
 
 @router.post("/logout")
-def logout(response: Response):
+def logout(request: Request, response: Response):
+    token = request.cookies.get("pangaea_session")
+    if token:
+        try:
+            payload = decode_access_token(token)
+            if payload and "sub" in payload:
+                db.users.update_one(
+                    {"_id": ObjectId(payload["sub"])},
+                    {"$inc": {"tokenVersion": 1}}
+                )
+        except Exception:
+            pass
     response.delete_cookie("pangaea_session")
     return {"ok": True}
 

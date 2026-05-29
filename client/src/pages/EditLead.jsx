@@ -2,20 +2,40 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../lib/AuthContext';
-import { User, Phone, Briefcase, Users, X, Plus, Trash2 } from 'lucide-react';
-
+import { User, Phone, Briefcase, Users, X, Plus, Trash2, Building2 } from 'lucide-react';
+import { countries as defaultCountries, validatePhone } from '../lib/countries';
+const parseErrorDetail = (detail) => {
+  if (!detail) return '';
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(d => {
+      const field = d.loc ? d.loc[d.loc.length - 1] : '';
+      return `${field ? field + ': ' : ''}${d.msg || JSON.stringify(d)}`;
+    }).join(', ');
+  }
+  if (typeof detail === 'object') {
+    return detail.message || detail.msg || JSON.stringify(detail);
+  }
+  return String(detail);
+};
 export default function EditLead() {
   const { user } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
   const [branches, setBranches] = useState([]);
   const [usersList, setUsersList] = useState([]);
+  const [countriesList, setCountriesList] = useState(defaultCountries);
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [globalError, setGlobalError] = useState('');
   const [errors, setErrors] = useState({});
   const [activeTab, setActiveTab] = useState(0);
   const [leadCode, setLeadCode] = useState('');
+
+  const [addressStates, setAddressStates] = useState({});
+  const [addressCities, setAddressCities] = useState({});
+  const [loadingStates, setLoadingStates] = useState({});
+  const [loadingCities, setLoadingCities] = useState({});
 
   const defaultService = {
     productLine: '',
@@ -45,18 +65,9 @@ export default function EditLead() {
     travelledCountries: '',
     visaRejected: 'No',
 
-    contactType: 'Personal',
-    contactCode: '+91',
-    phone: '',
-    emailType: 'Personal',
-    email: '',
-    addressType: 'Permanent',
-    addressLine1: '',
-    addressLine2: '',
-    country: '',
-    state: '',
-    city: '',
-    zipcode: '',
+    phoneNumbers: [],
+    emailAddresses: [],
+    addresses: [],
     facebookLink: '',
     twitterLink: '',
     instagramLink: '',
@@ -75,37 +86,97 @@ export default function EditLead() {
     secondaryContactNumber: '',
     secondaryEmail: '',
     secondaryAddress: '',
+    secondaryApplicants: [],
     consentContact: true,
   });
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [leadRes, branchRes, usersRes] = await Promise.all([
+        const [leadRes, branchRes, usersRes, countriesRes] = await Promise.all([
           axios.get(`/api/leads/${id}`),
-          axios.get('/api/meta/branches'),
-          axios.get('/api/users')
+          axios.get('/api/meta/branches').catch(err => {
+            console.error("Could not fetch branches", err);
+            return { data: [] };
+          }),
+          axios.get('/api/users').catch(err => {
+            console.error("Could not fetch users", err);
+            return { data: [] };
+          }),
+          axios.get('/api/meta/countries').catch(err => {
+            console.error("Could not fetch countries", err);
+            return { data: [] };
+          })
         ]);
-        setBranches(branchRes.data);
-        setUsersList(usersRes.data);
+        setBranches(branchRes.data || []);
+        
+        let fetchedUsers = usersRes.data || [];
+        if (fetchedUsers.length === 0 && user) {
+          fetchedUsers = [user];
+        }
+        setUsersList(fetchedUsers);
+        if (countriesRes && countriesRes.data && countriesRes.data.length > 0) {
+          setCountriesList(countriesRes.data);
+        }
         
         const lead = leadRes.data;
-        setLeadCode(lead._id?.substring(lead._id.length - 4) || '0001');
-
+        setLeadCode(lead.leadNo ? String(lead.leadNo).padStart(4, '0') : '0001');
+ 
         // Parse fullName into first/last
         const nameParts = (lead.fullName || '').split(' ');
         const firstName = nameParts[0] || '';
         const lastName = nameParts.slice(1).join(' ') || '';
-
-        // Parse phone code
-        let phoneCode = '+91';
-        let phoneNumber = lead.phone || '';
-        if (phoneNumber.startsWith('+')) {
-          const spaceIdx = phoneNumber.indexOf(' ');
-          if (spaceIdx > 0) {
-            phoneCode = phoneNumber.substring(0, spaceIdx);
-            phoneNumber = phoneNumber.substring(spaceIdx + 1);
+ 
+        // Parse phoneNumbers array or fallback
+        let loadedPhoneNumbers = lead.phoneNumbers || [];
+        if (loadedPhoneNumbers.length === 0) {
+          let phoneCode = '+91';
+          let phoneNumber = lead.phone || '';
+          if (phoneNumber.startsWith('+')) {
+            const spaceIdx = phoneNumber.indexOf(' ');
+            if (spaceIdx > 0) {
+              phoneCode = phoneNumber.substring(0, spaceIdx);
+              phoneNumber = phoneNumber.substring(spaceIdx + 1);
+            }
           }
+          loadedPhoneNumbers = [{
+            contactType: lead.contactType || 'Personal',
+            contactCode: phoneCode,
+            contactNumber: phoneNumber,
+            isPreferred: true
+          }];
+        }
+
+        // Parse emailAddresses array or fallback
+        let loadedEmailAddresses = lead.emailAddresses || [];
+        if (loadedEmailAddresses.length === 0 && lead.email) {
+          loadedEmailAddresses = [{
+            emailType: lead.emailType || 'Personal',
+            emailAddress: lead.email,
+            isPreferred: true
+          }];
+        }
+        if (loadedEmailAddresses.length === 0) {
+          loadedEmailAddresses = [{
+            emailType: 'Personal',
+            emailAddress: '',
+            isPreferred: true
+          }];
+        }
+
+        // Parse addresses array or fallback
+        let loadedAddresses = lead.addresses || [];
+        if (loadedAddresses.length === 0) {
+          loadedAddresses = [{
+            addressType: lead.addressType || 'Permanent',
+            isDefault: true,
+            addressLine1: lead.addressLine1 || '',
+            addressLine2: lead.addressLine2 || '',
+            country: lead.country || '',
+            state: lead.state || '',
+            city: lead.city || '',
+            zipcode: lead.zipcode || ''
+          }];
         }
 
         // Parse services array, or fallback to root properties
@@ -121,17 +192,52 @@ export default function EditLead() {
           }];
         }
 
+        // Parse secondary applicants list with fallback to legacy flat fields
+        let loadedSecondaryApplicants = lead.secondaryApplicants || [];
+        if (loadedSecondaryApplicants.length === 0 && lead.secondaryRelationship) {
+          loadedSecondaryApplicants = [{
+            secondaryRelationship: lead.secondaryRelationship || '',
+            secondaryFirstName: lead.secondaryFirstName || '',
+            secondaryLastName: lead.secondaryLastName || '',
+            secondaryDob: lead.secondaryDob || '',
+            secondaryPassport: lead.secondaryPassport || '',
+            secondaryContactCode: lead.secondaryContactCode || '+91',
+            secondaryContactNumber: lead.secondaryContactNumber || '',
+            secondaryEmail: lead.secondaryEmail || '',
+            secondaryAddress: lead.secondaryAddress || ''
+          }];
+        }
+ 
         setFormData(prev => ({
           ...prev,
           ...lead,
           firstName,
           lastName,
-          contactCode: phoneCode,
-          phone: phoneNumber,
+          phoneNumbers: loadedPhoneNumbers,
+          emailAddresses: loadedEmailAddresses,
+          addresses: loadedAddresses,
           tags: Array.isArray(lead.tags) ? lead.tags.join(', ') : (lead.tags || ''),
           branchId: lead.branchId || '',
           services: loadedServices,
+          secondaryApplicants: loadedSecondaryApplicants
         }));
+
+        // Fetch states and cities for pre-loaded addresses
+        loadedAddresses.forEach(async (addr, index) => {
+          if (addr.country) {
+            try {
+              const statesRes = await axios.post('/api/meta/states', { country: addr.country });
+              setAddressStates(prev => ({ ...prev, [index]: statesRes.data.states || [] }));
+
+              if (addr.state) {
+                const citiesRes = await axios.post('/api/meta/cities', { country: addr.country, state: addr.state });
+                setAddressCities(prev => ({ ...prev, [index]: citiesRes.data.cities || [] }));
+              }
+            } catch (err) {
+              console.error(`Error loading state/city for address at index ${index}`, err);
+            }
+          }
+        });
       } catch (err) {
         console.error(err);
         setGlobalError('Failed to load lead data');
@@ -147,6 +253,193 @@ export default function EditLead() {
     const val = type === 'checkbox' ? checked : value;
     setFormData({ ...formData, [name]: val });
     if (errors[name]) setErrors({ ...errors, [name]: null });
+  };
+
+  const addPhoneNumber = () => {
+    setFormData({
+      ...formData,
+      phoneNumbers: [...formData.phoneNumbers, { contactType: 'Personal', contactCode: '+91', contactNumber: '', isPreferred: false }]
+    });
+  };
+
+  const removePhoneNumber = (index) => {
+    if (formData.phoneNumbers.length > 1) {
+      const isWasPreferred = formData.phoneNumbers[index].isPreferred;
+      const newPhoneNumbers = formData.phoneNumbers.filter((_, i) => i !== index);
+      if (isWasPreferred && newPhoneNumbers.length > 0) {
+        newPhoneNumbers[0].isPreferred = true;
+      }
+      setFormData({ ...formData, phoneNumbers: newPhoneNumbers });
+    }
+  };
+
+  const handlePhoneNumberChange = (index, field, value) => {
+    const newPhoneNumbers = formData.phoneNumbers.map((pn, i) => {
+      if (i === index) {
+        return { ...pn, [field]: value };
+      }
+      if (field === 'isPreferred' && value === true) {
+        return { ...pn, isPreferred: false };
+      }
+      return pn;
+    });
+    setFormData({ ...formData, phoneNumbers: newPhoneNumbers });
+    if (errors[`phoneNumbers_${index}_${field}`]) {
+      setErrors({ ...errors, [`phoneNumbers_${index}_${field}`]: null });
+    }
+  };
+
+  const addEmailAddress = () => {
+    setFormData({
+      ...formData,
+      emailAddresses: [...formData.emailAddresses, { emailType: 'Personal', emailAddress: '', isPreferred: false }]
+    });
+  };
+
+  const removeEmailAddress = (index) => {
+    if (formData.emailAddresses.length > 1) {
+      const isWasPreferred = formData.emailAddresses[index].isPreferred;
+      const newEmailAddresses = formData.emailAddresses.filter((_, i) => i !== index);
+      if (isWasPreferred && newEmailAddresses.length > 0) {
+        newEmailAddresses[0].isPreferred = true;
+      }
+      setFormData({ ...formData, emailAddresses: newEmailAddresses });
+    }
+  };
+
+  const handleEmailAddressChange = (index, field, value) => {
+    const newEmails = formData.emailAddresses.map((em, i) => {
+      if (i === index) {
+        return { ...em, [field]: value };
+      }
+      if (field === 'isPreferred' && value === true) {
+        return { ...em, isPreferred: false };
+      }
+      return em;
+    });
+    setFormData({ ...formData, emailAddresses: newEmails });
+    if (errors[`emailAddresses_${index}_${field}`]) {
+      setErrors({ ...errors, [`emailAddresses_${index}_${field}`]: null });
+    }
+  };
+
+  const addAddress = () => {
+    setFormData({
+      ...formData,
+      addresses: [...formData.addresses, { addressType: 'Permanent', isDefault: false, addressLine1: '', addressLine2: '', country: '', state: '', city: '', zipcode: '' }]
+    });
+  };
+
+  const removeAddress = (index) => {
+    if (formData.addresses.length > 1) {
+      const isWasDefault = formData.addresses[index].isDefault;
+      const newAddresses = formData.addresses.filter((_, i) => i !== index);
+      if (isWasDefault && newAddresses.length > 0) {
+        newAddresses[0].isDefault = true;
+      }
+      setFormData({ ...formData, addresses: newAddresses });
+
+      // Shift states and cities cache index keys
+      setAddressStates(prev => {
+        const next = {};
+        let newIdx = 0;
+        for (let i = 0; i < formData.addresses.length; i++) {
+          if (i !== index) {
+            if (prev[i]) next[newIdx] = prev[i];
+            newIdx++;
+          }
+        }
+        return next;
+      });
+      setAddressCities(prev => {
+        const next = {};
+        let newIdx = 0;
+        for (let i = 0; i < formData.addresses.length; i++) {
+          if (i !== index) {
+            if (prev[i]) next[newIdx] = prev[i];
+            newIdx++;
+          }
+        }
+        return next;
+      });
+    }
+  };
+
+  const handleAddressChange = async (index, field, value) => {
+    let newAddresses = [...formData.addresses];
+
+    if (field === 'country') {
+      newAddresses[index] = {
+        ...newAddresses[index],
+        country: value,
+        state: '',
+        city: ''
+      };
+      setAddressCities(prev => ({ ...prev, [index]: [] }));
+
+      if (value) {
+        setLoadingStates(prev => ({ ...prev, [index]: true }));
+        try {
+          const res = await axios.post('/api/meta/states', { country: value });
+          setAddressStates(prev => ({ ...prev, [index]: res.data.states || [] }));
+        } catch (err) {
+          console.error("Error fetching states", err);
+          setAddressStates(prev => ({ ...prev, [index]: [] }));
+        } finally {
+          setLoadingStates(prev => ({ ...prev, [index]: false }));
+        }
+      } else {
+        setAddressStates(prev => ({ ...prev, [index]: [] }));
+      }
+    } else if (field === 'state') {
+      newAddresses[index] = {
+        ...newAddresses[index],
+        state: value,
+        city: ''
+      };
+
+      if (value && newAddresses[index].country) {
+        setLoadingCities(prev => ({ ...prev, [index]: true }));
+        try {
+          const res = await axios.post('/api/meta/cities', {
+            country: newAddresses[index].country,
+            state: value
+          });
+          setAddressCities(prev => ({ ...prev, [index]: res.data.cities || [] }));
+        } catch (err) {
+          console.error("Error fetching cities", err);
+          setAddressCities(prev => ({ ...prev, [index]: [] }));
+        } finally {
+          setLoadingCities(prev => ({ ...prev, [index]: false }));
+        }
+      } else {
+        setAddressCities(prev => ({ ...prev, [index]: [] }));
+      }
+    } else if (field === 'isDefault' && value === true) {
+      newAddresses = newAddresses.map((addr, i) => {
+        if (i === index) return { ...addr, isDefault: true };
+        return { ...addr, isDefault: false };
+      });
+    } else {
+      newAddresses[index] = {
+        ...newAddresses[index],
+        [field]: value
+      };
+    }
+
+    setFormData({ ...formData, addresses: newAddresses });
+
+    const newErrors = { ...errors };
+    if (newErrors[`addresses_${index}_${field}`]) {
+      newErrors[`addresses_${index}_${field}`] = null;
+    }
+    if (field === 'country') {
+      newErrors[`addresses_${index}_state`] = null;
+      newErrors[`addresses_${index}_city`] = null;
+    } else if (field === 'state') {
+      newErrors[`addresses_${index}_city`] = null;
+    }
+    setErrors(newErrors);
   };
 
   const handleServiceChange = (index, field, value) => {
@@ -167,6 +460,37 @@ export default function EditLead() {
       const newServices = formData.services.filter((_, i) => i !== index);
       setFormData({ ...formData, services: newServices });
     }
+  };
+
+  const handleSecondaryApplicantChange = (index, field, value) => {
+    const newApplicants = [...formData.secondaryApplicants];
+    newApplicants[index][field] = value;
+    setFormData({ ...formData, secondaryApplicants: newApplicants });
+  };
+
+  const addSecondaryApplicant = () => {
+    setFormData({
+      ...formData,
+      secondaryApplicants: [
+        ...formData.secondaryApplicants,
+        {
+          secondaryRelationship: '',
+          secondaryFirstName: '',
+          secondaryLastName: '',
+          secondaryDob: '',
+          secondaryPassport: '',
+          secondaryContactCode: '+91',
+          secondaryContactNumber: '',
+          secondaryEmail: '',
+          secondaryAddress: ''
+        }
+      ]
+    });
+  };
+
+  const removeSecondaryApplicant = (index) => {
+    const newApplicants = formData.secondaryApplicants.filter((_, i) => i !== index);
+    setFormData({ ...formData, secondaryApplicants: newApplicants });
   };
 
   const validateTab = (tabIndex) => {
@@ -190,13 +514,44 @@ export default function EditLead() {
         }
       }
     } else if (tabIndex === 1) {
-      if (!formData.phone.trim()) newErrors.phone = 'Contact Number is required';
-      else if (formData.phone.trim().length < 5 || formData.phone.trim().length > 15) {
-        newErrors.phone = 'Invalid phone number length';
+      if (!formData.phoneNumbers || formData.phoneNumbers.length === 0) {
+        newErrors.phoneNumbers = 'At least one contact number is required';
+      } else {
+        formData.phoneNumbers.forEach((pn, index) => {
+          const check = validatePhone(pn.contactCode, pn.contactNumber);
+          if (!check.isValid) {
+            newErrors[`phoneNumbers_${index}_contactNumber`] = check.error;
+          }
+        });
       }
-      if (!formData.email.trim()) newErrors.email = 'Email Address is required';
-      if (formData.email && !/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(formData.email)) {
-        newErrors.email = 'Invalid email format';
+      if (!formData.emailAddresses || formData.emailAddresses.length === 0) {
+        newErrors.emailAddresses = 'At least one email address is required';
+      } else {
+        formData.emailAddresses.forEach((em, index) => {
+          if (!em.emailAddress.trim()) {
+            newErrors[`emailAddresses_${index}_emailAddress`] = 'Required';
+          } else if (!/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(em.emailAddress.trim())) {
+            newErrors[`emailAddresses_${index}_emailAddress`] = 'Invalid format';
+          }
+        });
+      }
+      if (formData.addresses) {
+        formData.addresses.forEach((addr, index) => {
+          if (addr.addressLine1 || addr.city || addr.zipcode || addr.state || addr.country) {
+            if (!addr.addressLine1.trim()) {
+              newErrors[`addresses_${index}_addressLine1`] = 'Area is required';
+            }
+            if (!addr.country) {
+              newErrors[`addresses_${index}_country`] = 'Country is required';
+            }
+            if (addressStates[index] && addressStates[index].length > 0 && !addr.state) {
+              newErrors[`addresses_${index}_state`] = 'State is required';
+            }
+            if (addressCities[index] && addressCities[index].length > 0 && !addr.city) {
+              newErrors[`addresses_${index}_city`] = 'City is required';
+            }
+          }
+        });
       }
     } else if (tabIndex === 2) {
       if (!formData.branchId) newErrors.branchId = 'Branch is required';
@@ -206,6 +561,20 @@ export default function EditLead() {
         if (!srv.leadStatus) newErrors[`service_${idx}_leadStatus`] = 'Required';
         if (!srv.leadQuality) newErrors[`service_${idx}_leadQuality`] = 'Required';
         if (!srv.source) newErrors[`service_${idx}_source`] = 'Required';
+      });
+    } else if (tabIndex === 3) {
+      formData.secondaryApplicants.forEach((sa, index) => {
+        if (sa.secondaryContactNumber && sa.secondaryContactNumber.trim()) {
+          const check = validatePhone(sa.secondaryContactCode, sa.secondaryContactNumber);
+          if (!check.isValid) {
+            newErrors[`secondary_${index}_secondaryContactNumber`] = check.error;
+          }
+        }
+        if (sa.secondaryEmail && sa.secondaryEmail.trim()) {
+          if (!/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/.test(sa.secondaryEmail.trim())) {
+            newErrors[`secondary_${index}_secondaryEmail`] = 'Invalid format';
+          }
+        }
       });
     }
     
@@ -236,10 +605,14 @@ export default function EditLead() {
 
     const primaryService = formData.services[0];
 
+    const prefPhone = formData.phoneNumbers.find(p => p.isPreferred) || formData.phoneNumbers[0];
+    const prefEmail = formData.emailAddresses.find(e => e.isPreferred) || formData.emailAddresses[0];
+
     const payload = {
       ...formData,
       fullName: `${formData.firstName} ${formData.lastName}`.trim(),
-      phone: formData.phone ? `${formData.contactCode} ${formData.phone}` : '',
+      phone: prefPhone && prefPhone.contactNumber ? `${prefPhone.contactCode} ${prefPhone.contactNumber}`.trim() : '',
+      email: prefEmail ? prefEmail.emailAddress.trim() : '',
       tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : [],
       productLine: primaryService.productLine,
       assignTo: primaryService.assignTo,
@@ -255,8 +628,6 @@ export default function EditLead() {
     delete payload.createdAt;
     delete payload.updatedAt;
     delete payload.createdBy;
-    delete payload.firstName;
-    delete payload.lastName;
     delete payload.contactCode;
     delete payload.comments;
 
@@ -264,7 +635,7 @@ export default function EditLead() {
       await axios.patch(`/api/leads/${id}`, payload);
       navigate(`/leads/${id}`);
     } catch (err) {
-      setGlobalError(err.response?.data?.detail || 'Failed to update lead');
+      setGlobalError(parseErrorDetail(err.response?.data?.detail) || 'Failed to update lead');
     } finally {
       setLoading(false);
     }
@@ -395,11 +766,9 @@ export default function EditLead() {
                 <label className={labelClass}>Country of Passport</label>
                 <select name="countryOfPassport" value={formData.countryOfPassport} onChange={handleChange} className={getInputClass('countryOfPassport')}>
                   <option value="">Select Country</option>
-                  <option value="India">India</option>
-                  <option value="Australia">Australia</option>
-                  <option value="Canada">Canada</option>
-                  <option value="UK">UK</option>
-                  <option value="USA">USA</option>
+                  {countriesList.map(c => (
+                    <option key={c.code} value={c.name}>{c.name}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -445,10 +814,9 @@ export default function EditLead() {
               <label className={labelClass}>Which country have you moved/travelled to?</label>
               <select name="travelledCountries" value={formData.travelledCountries} onChange={handleChange} className={getInputClass('travelledCountries')}>
                 <option value="">Select Country(s)</option>
-                <option value="Australia">Australia</option>
-                <option value="Canada">Canada</option>
-                <option value="UK">UK</option>
-                <option value="USA">USA</option>
+                {countriesList.map(c => (
+                  <option key={c.code} value={c.name}>{c.name}</option>
+                ))}
               </select>
             </div>
 
@@ -468,88 +836,412 @@ export default function EditLead() {
 
         {/* TAB 1: Contact Info */}
         {activeTab === 1 && (
-          <div className="space-y-5">
-            <div>
-              <label className={labelClass}>* Contact Type</label>
-              <select name="contactType" value={formData.contactType} onChange={handleChange} className={getInputClass('contactType')}>
-                <option value="Personal">Personal</option>
-                <option value="Work">Work</option>
-              </select>
-            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-8">
+              {/* SECTION: Contact Numbers */}
+              <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-200/80 pb-2.5">
+                  <h4 className="text-sm font-bold text-sky-900 uppercase tracking-wider flex items-center">
+                    <Phone className="w-4 h-4 mr-2 text-indigo-500" /> Contact Numbers
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={addPhoneNumber}
+                    className="flex items-center text-xs font-bold text-indigo-650 bg-indigo-50 hover:bg-indigo-100/85 py-1.5 px-3 rounded-lg border border-indigo-200 transition"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Add Number
+                  </button>
+                </div>
+                {errors.phoneNumbers && (
+                  <span className="text-xs text-red-500 block">{errors.phoneNumbers}</span>
+                )}
 
-            <div className="flex gap-3">
-              <div className="w-24 shrink-0">
-                <label className={labelClass}>*Code</label>
-                <select name="contactCode" value={formData.contactCode} onChange={handleChange} className={getInputClass('contactCode')}>
-                  <option value="+91">+91</option>
-                  <option value="+61">+61</option>
-                  <option value="+1">+1</option>
-                  <option value="+44">+44</option>
-                </select>
+                <div className="space-y-3">
+                  {formData.phoneNumbers.map((pn, idx) => (
+                    <div key={idx} className={`p-4 rounded-xl border bg-white shadow-sm flex flex-col md:flex-row gap-3 items-start md:items-center relative transition-all duration-255 ${pn.isPreferred ? 'border-indigo-400 ring-2 ring-indigo-50 bg-indigo-50/5' : 'border-slate-200 hover:border-slate-350'}`}>
+                      <div className="w-full md:w-32">
+                        <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Type</label>
+                        <select
+                          value={pn.contactType}
+                          onChange={(e) => handlePhoneNumberChange(idx, 'contactType', e.target.value)}
+                          className="mt-0.5 block w-full rounded-lg border border-slate-200 py-1.5 px-2.5 text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white"
+                        >
+                          <option value="Personal">Personal</option>
+                          <option value="Work">Work</option>
+                          <option value="Home">Home</option>
+                          <option value="Mobile">Mobile</option>
+                          <option value="Office">Office</option>
+                        </select>
+                      </div>
+
+                      <div className="w-24 shrink-0">
+                        <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Code</label>
+                        <select
+                          value={pn.contactCode}
+                          onChange={(e) => handlePhoneNumberChange(idx, 'contactCode', e.target.value)}
+                          className="mt-0.5 block w-full rounded-lg border border-slate-200 py-1.5 px-2.5 text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white"
+                        >
+                          {countriesList.map(c => (
+                            <option key={`${c.code}-${c.dial_code}`} value={c.dial_code}>
+                              {c.dial_code} ({c.name})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="flex-1 w-full">
+                        <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Number</label>
+                        <input
+                          type="text"
+                          value={pn.contactNumber}
+                          onChange={(e) => handlePhoneNumberChange(idx, 'contactNumber', e.target.value)}
+                          className={`mt-0.5 block w-full rounded-lg border py-1.5 px-3 text-xs bg-white ${errors[`phoneNumbers_${idx}_contactNumber`] ? 'border-red-500 bg-red-50/50' : 'border-slate-200 focus:ring-2 focus:ring-sky-500 focus:border-sky-500'}`}
+                          placeholder="e.g. 9876543210"
+                        />
+                        {errors[`phoneNumbers_${idx}_contactNumber`] && (
+                          <span className="text-[10px] text-red-500 mt-0.5 block">
+                            {errors[`phoneNumbers_${idx}_contactNumber`]}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center space-x-3 self-end md:self-center mt-2 md:mt-4 shrink-0">
+                        <label className="flex items-center space-x-1.5 cursor-pointer text-xs font-semibold text-slate-650">
+                          <input
+                            type="checkbox"
+                            checked={pn.isPreferred}
+                            onChange={(e) => handlePhoneNumberChange(idx, 'isPreferred', e.target.checked)}
+                            className="rounded text-indigo-650 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5"
+                          />
+                          <span>Preferred</span>
+                        </label>
+
+                        {formData.phoneNumbers.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removePhoneNumber(idx)}
+                            className="p-1.5 text-red-400 hover:text-red-650 hover:bg-red-50 rounded-lg transition"
+                            title="Delete contact number"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="flex-1">
-                <label className={labelClass}>*Contact Number</label>
-                <input type="text" name="phone" value={formData.phone} onChange={handleChange} className={getInputClass('phone')} />
-                {errors.phone && <span className="text-xs text-red-500 mt-1">{errors.phone}</span>}
+
+              {/* SECTION: Email Addresses */}
+              <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-200/80 pb-2.5">
+                  <h4 className="text-sm font-bold text-sky-900 uppercase tracking-wider flex items-center">
+                    <Users className="w-4 h-4 mr-2 text-indigo-500" /> Email Addresses
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={addEmailAddress}
+                    className="flex items-center text-xs font-bold text-indigo-650 bg-indigo-50 hover:bg-indigo-100/85 py-1.5 px-3 rounded-lg border border-indigo-200 transition"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Add Email
+                  </button>
+                </div>
+                {errors.emailAddresses && (
+                  <span className="text-xs text-red-500 block">{errors.emailAddresses}</span>
+                )}
+
+                <div className="space-y-3">
+                  {formData.emailAddresses.map((em, idx) => (
+                    <div key={idx} className={`p-4 rounded-xl border bg-white shadow-sm flex flex-col md:flex-row gap-3 items-start md:items-center relative transition-all duration-255 ${em.isPreferred ? 'border-indigo-400 ring-2 ring-indigo-50 bg-indigo-50/5' : 'border-slate-200 hover:border-slate-350'}`}>
+                      <div className="w-full md:w-32">
+                        <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Type</label>
+                        <select
+                          value={em.emailType}
+                          onChange={(e) => handleEmailAddressChange(idx, 'emailType', e.target.value)}
+                          className="mt-0.5 block w-full rounded-lg border border-slate-200 py-1.5 px-2.5 text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white"
+                        >
+                          <option value="Personal">Personal</option>
+                          <option value="Work">Work</option>
+                          <option value="Office">Office</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+
+                      <div className="flex-1 w-full">
+                        <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Email Address</label>
+                        <input
+                          type="email"
+                          value={em.emailAddress}
+                          onChange={(e) => handleEmailAddressChange(idx, 'emailAddress', e.target.value)}
+                          className={`mt-0.5 block w-full rounded-lg border py-1.5 px-3 text-xs bg-white ${errors[`emailAddresses_${idx}_emailAddress`] ? 'border-red-500 bg-red-50/50' : 'border-slate-200 focus:ring-2 focus:ring-sky-500 focus:border-sky-500'}`}
+                          placeholder="e.g. name@example.com"
+                        />
+                        {errors[`emailAddresses_${idx}_emailAddress`] && (
+                          <span className="text-[10px] text-red-500 mt-0.5 block">
+                            {errors[`emailAddresses_${idx}_emailAddress`]}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center space-x-3 self-end md:self-center mt-2 md:mt-4 shrink-0">
+                        <label className="flex items-center space-x-1.5 cursor-pointer text-xs font-semibold text-slate-650">
+                          <input
+                            type="checkbox"
+                            checked={em.isPreferred}
+                            onChange={(e) => handleEmailAddressChange(idx, 'isPreferred', e.target.checked)}
+                            className="rounded text-indigo-650 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5"
+                          />
+                          <span>Preferred</span>
+                        </label>
+
+                        {formData.emailAddresses.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeEmailAddress(idx)}
+                            className="p-1.5 text-red-400 hover:text-red-650 hover:bg-red-50 rounded-lg transition"
+                            title="Delete email address"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* SECTION: Physical Addresses */}
+              <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-200/80 pb-2.5">
+                  <h4 className="text-sm font-bold text-sky-900 uppercase tracking-wider flex items-center">
+                    <Building2 className="w-4 h-4 mr-2 text-indigo-500" /> Addresses
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={addAddress}
+                    className="flex items-center text-xs font-bold text-indigo-650 bg-indigo-50 hover:bg-indigo-100/85 py-1.5 px-3 rounded-lg border border-indigo-200 transition"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Add Address
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {formData.addresses.map((addr, idx) => (
+                    <div key={idx} className={`p-5 rounded-xl border bg-white shadow-sm space-y-4 relative transition-all duration-255 ${addr.isDefault ? 'border-indigo-400 ring-2 ring-indigo-50 bg-indigo-50/5' : 'border-slate-200 hover:border-slate-350'}`}>
+                      <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                        <div className="flex items-center space-x-3">
+                          <span className="text-xs font-black text-slate-400 uppercase tracking-wider">Address Block #{idx + 1}</span>
+                          <select
+                            value={addr.addressType}
+                            onChange={(e) => handleAddressChange(idx, 'addressType', e.target.value)}
+                            className="py-0.5 px-2 text-[10px] font-bold uppercase rounded border border-slate-200 bg-white text-slate-655 focus:ring-indigo-500"
+                          >
+                            <option value="Permanent">Permanent</option>
+                            <option value="Current">Current</option>
+                            <option value="Office">Office</option>
+                            <option value="Home">Home</option>
+                            <option value="Mailing">Mailing</option>
+                          </select>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <label className="flex items-center space-x-1.5 cursor-pointer text-xs font-semibold text-slate-650">
+                            <input
+                              type="checkbox"
+                              checked={addr.isDefault}
+                              onChange={(e) => handleAddressChange(idx, 'isDefault', e.target.checked)}
+                              className="rounded text-indigo-650 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5"
+                            />
+                            <span>Default Billing</span>
+                          </label>
+
+                          {formData.addresses.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeAddress(idx)}
+                              className="p-1 text-red-400 hover:text-red-650 hover:bg-red-50 rounded"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* Country Selector */}
+                          <div>
+                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Country</label>
+                            <select
+                              value={addr.country}
+                              onChange={(e) => handleAddressChange(idx, 'country', e.target.value)}
+                              className={`mt-0.5 block w-full rounded-lg border py-1.5 px-2.5 text-xs bg-white ${errors[`addresses_${idx}_country`] ? 'border-red-500 bg-red-50/50' : 'border-slate-200 focus:ring-2 focus:ring-sky-500 focus:border-sky-500'}`}
+                            >
+                              <option value="">Select Country</option>
+                              {countriesList.map(c => (
+                                <option key={c.code} value={c.name}>{c.name}</option>
+                              ))}
+                            </select>
+                            {errors[`addresses_${idx}_country`] && (
+                              <span className="text-[10px] text-red-500 mt-0.5 block">{errors[`addresses_${idx}_country`]}</span>
+                            )}
+                          </div>
+
+                          {/* State Selector */}
+                          <div>
+                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">State</label>
+                            <select
+                              value={addr.state}
+                              onChange={(e) => handleAddressChange(idx, 'state', e.target.value)}
+                              disabled={!addr.country || loadingStates[idx]}
+                              className={`mt-0.5 block w-full rounded-lg border py-1.5 px-2.5 text-xs bg-white ${errors[`addresses_${idx}_state`] ? 'border-red-500 bg-red-50/50' : 'border-slate-200 focus:ring-2 focus:ring-sky-500 focus:border-sky-500'}`}
+                            >
+                              <option value="">{loadingStates[idx] ? 'Loading states...' : 'Select State'}</option>
+                              {(addressStates[idx] || []).map(st => (
+                                <option key={st} value={st}>{st}</option>
+                              ))}
+                            </select>
+                            {errors[`addresses_${idx}_state`] && (
+                              <span className="text-[10px] text-red-500 mt-0.5 block">{errors[`addresses_${idx}_state`]}</span>
+                            )}
+                          </div>
+
+                          {/* City/Suburb Selector */}
+                          <div>
+                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">City</label>
+                            <select
+                              value={addr.city}
+                              onChange={(e) => handleAddressChange(idx, 'city', e.target.value)}
+                              disabled={!addr.state || loadingCities[idx]}
+                              className={`mt-0.5 block w-full rounded-lg border py-1.5 px-2.5 text-xs bg-white ${errors[`addresses_${idx}_city`] ? 'border-red-500 bg-red-50/50' : 'border-slate-200 focus:ring-2 focus:ring-sky-500 focus:border-sky-500'}`}
+                            >
+                              <option value="">{loadingCities[idx] ? 'Loading cities...' : 'Select City'}</option>
+                              {(addressCities[idx] || []).map(ct => (
+                                <option key={ct} value={ct}>{ct}</option>
+                              ))}
+                            </select>
+                            {errors[`addresses_${idx}_city`] && (
+                              <span className="text-[10px] text-red-500 mt-0.5 block">{errors[`addresses_${idx}_city`]}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* Area / Address Line 1 */}
+                          <div className="md:col-span-2">
+                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Area / Street Address</label>
+                            <input
+                              type="text"
+                              placeholder="Area / Street Address"
+                              value={addr.addressLine1}
+                              onChange={(e) => handleAddressChange(idx, 'addressLine1', e.target.value)}
+                              className={`mt-0.5 block w-full rounded-lg border py-1.5 px-3 text-xs bg-white ${errors[`addresses_${idx}_addressLine1`] ? 'border-red-500 bg-red-50/50' : 'border-slate-200 focus:ring-2 focus:ring-sky-500 focus:border-sky-500'}`}
+                            />
+                            {errors[`addresses_${idx}_addressLine1`] && (
+                              <span className="text-[10px] text-red-500 mt-0.5 block">{errors[`addresses_${idx}_addressLine1`]}</span>
+                            )}
+                          </div>
+
+                          {/* Zipcode/Pincode */}
+                          <div>
+                            <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Zipcode/Pincode</label>
+                            <input
+                              type="text"
+                              placeholder="Zipcode/Pincode"
+                              value={addr.zipcode}
+                              onChange={(e) => handleAddressChange(idx, 'zipcode', e.target.value)}
+                              className="mt-0.5 block w-full rounded-lg border border-slate-200 py-1.5 px-3 text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Optional Address Line 2 */}
+                        <div>
+                          <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Address Line 2 (Optional)</label>
+                          <input
+                            type="text"
+                            placeholder="Apartment, suite, unit, building, floor, etc."
+                            value={addr.addressLine2}
+                            onChange={(e) => handleAddressChange(idx, 'addressLine2', e.target.value)}
+                            className="mt-0.5 block w-full rounded-lg border border-slate-200 py-1.5 px-3 text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* SECTION: Social Links */}
+              <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-200/60 space-y-4">
+                <h4 className="text-sm font-bold text-sky-900 uppercase tracking-wider">Social Media Links</h4>
+                <div className="space-y-3">
+                  <input type="text" name="facebookLink" placeholder="Facebook Link" value={formData.facebookLink} onChange={handleChange} className="block w-full rounded-lg border border-slate-200 py-2 px-3 text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white" />
+                  <input type="text" name="twitterLink" placeholder="Twitter Link" value={formData.twitterLink} onChange={handleChange} className="block w-full rounded-lg border border-slate-200 py-2 px-3 text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white" />
+                  <input type="text" name="instagramLink" placeholder="Instagram Link" value={formData.instagramLink} onChange={handleChange} className="block w-full rounded-lg border border-slate-200 py-2 px-3 text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white" />
+                  <input type="text" name="youtubeLink" placeholder="Youtube Link" value={formData.youtubeLink} onChange={handleChange} className="block w-full rounded-lg border border-slate-200 py-2 px-3 text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white" />
+                  <input type="text" name="linkedinLink" placeholder="LinkedIn Link" value={formData.linkedinLink} onChange={handleChange} className="block w-full rounded-lg border border-slate-200 py-2 px-3 text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white" />
+                </div>
               </div>
             </div>
 
-            <div>
-              <label className={labelClass}>* Email Type</label>
-              <select name="emailType" value={formData.emailType} onChange={handleChange} className={getInputClass('emailType')}>
-                <option value="Personal">Personal</option>
-                <option value="Work">Work</option>
-              </select>
-            </div>
-            <div>
-              <label className={labelClass}>*Email Address</label>
-              <input type="email" name="email" value={formData.email} onChange={handleChange} className={getInputClass('email')} />
-              {errors.email && <span className="text-xs text-red-500 mt-1">{errors.email}</span>}
-            </div>
+            {/* RIGHT COLUMN: Address Preview Panel */}
+            <div className="lg:col-span-1">
+              {(() => {
+                const activeAddress = formData.addresses.find(a => a.isDefault) || formData.addresses[0];
+                return activeAddress ? (
+                  <div className="bg-gradient-to-br from-indigo-900 to-indigo-950 text-white rounded-2xl p-6 shadow-xl sticky top-6 border border-indigo-800">
+                    <div className="flex items-center justify-between mb-4 border-b border-indigo-800 pb-3">
+                      <h4 className="text-xs font-extrabold uppercase tracking-widest text-indigo-300 font-mono">Invoice Mailing Label</h4>
+                      <span className="text-[10px] bg-indigo-500/30 text-indigo-300 font-bold px-2 py-0.5 rounded-full border border-indigo-500/20 uppercase">
+                        {activeAddress.addressType || 'Permanent'}
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-3 font-sans">
+                      <div className="border-l-4 border-emerald-400 pl-3 py-1 space-y-1">
+                        <p className="font-semibold text-sm tracking-wide text-white">
+                          {formData.firstName || formData.lastName ? `${formData.firstName} ${formData.lastName}`.trim().toUpperCase() : 'APPLICANT NAME'}
+                        </p>
+                        <p className="text-xs text-indigo-100/90 leading-relaxed font-mono">
+                          {activeAddress.addressLine1 || <span className="text-indigo-400 italic text-[11px]">No Address Line 1</span>}
+                        </p>
+                        {activeAddress.addressLine2 && (
+                          <p className="text-xs text-indigo-100/90 leading-relaxed font-mono">{activeAddress.addressLine2}</p>
+                        )}
+                        <p className="text-xs text-indigo-100/90 leading-relaxed font-mono">
+                          {[activeAddress.city, activeAddress.state, activeAddress.zipcode].filter(Boolean).join(', ') || <span className="text-indigo-400 italic text-[11px]">City, State, Zipcode</span>}
+                        </p>
+                        <p className="text-xs font-bold text-emerald-300 uppercase tracking-wider pt-1 font-mono">
+                          {activeAddress.country || <span className="text-indigo-400 italic text-[11px]">Country</span>}
+                        </p>
+                      </div>
 
-            <hr className="border-slate-200" />
-
-            <div>
-              <label className={labelClass}>Address Type</label>
-              <select name="addressType" value={formData.addressType} onChange={handleChange} className={getInputClass('addressType')}>
-                <option value="Permanent">Permanent</option>
-                <option value="Current">Current</option>
-              </select>
-            </div>
-            <div>
-              <input type="text" name="addressLine1" placeholder="Address Line 1" value={formData.addressLine1} onChange={handleChange} className={getInputClass('addressLine1')} />
-            </div>
-            <div>
-              <input type="text" name="addressLine2" placeholder="Address Line 2" value={formData.addressLine2} onChange={handleChange} className={getInputClass('addressLine2')} />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <select name="country" value={formData.country} onChange={handleChange} className={getInputClass('country')}>
-                <option value="">Select Country</option>
-                <option value="India">India</option>
-                <option value="Australia">Australia</option>
-              </select>
-              <select name="state" value={formData.state} onChange={handleChange} className={getInputClass('state')}>
-                <option value="">Select State</option>
-                <option value="Gujarat">Gujarat</option>
-                <option value="Maharashtra">Maharashtra</option>
-                <option value="Victoria">Victoria</option>
-                <option value="NSW">NSW</option>
-              </select>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <input type="text" name="city" placeholder="City/Suburb" value={formData.city} onChange={handleChange} className={getInputClass('city')} />
-              <input type="text" name="zipcode" placeholder="Zipcode/Pincode" value={formData.zipcode} onChange={handleChange} className={getInputClass('zipcode')} />
-            </div>
-
-            <hr className="border-slate-200" />
-
-            <h4 className="text-sm font-semibold text-slate-600">Social Media Links</h4>
-            <div className="space-y-3">
-              <input type="text" name="facebookLink" placeholder="Facebook Link" value={formData.facebookLink} onChange={handleChange} className={getInputClass('facebookLink')} />
-              <input type="text" name="twitterLink" placeholder="Twitter Link" value={formData.twitterLink} onChange={handleChange} className={getInputClass('twitterLink')} />
-              <input type="text" name="instagramLink" placeholder="Instagram Link" value={formData.instagramLink} onChange={handleChange} className={getInputClass('instagramLink')} />
-              <input type="text" name="youtubeLink" placeholder="Youtube Link" value={formData.youtubeLink} onChange={handleChange} className={getInputClass('youtubeLink')} />
-              <input type="text" name="linkedinLink" placeholder="LinkedIn Link" value={formData.linkedinLink} onChange={handleChange} className={getInputClass('linkedinLink')} />
+                      <div className="bg-indigo-950/70 border border-indigo-850/60 rounded-xl p-3.5 mt-4 space-y-2">
+                        <div className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider font-mono">Contact Info Summary</div>
+                        <div className="text-xs space-y-1.5 text-indigo-200">
+                          {formData.phoneNumbers.map((pn, i) => (
+                            <div key={i} className={`flex justify-between items-center text-[11px] ${pn.isPreferred ? 'text-white font-semibold font-sans' : 'text-indigo-200/70'}`}>
+                              <span>{pn.contactType} ({pn.contactCode}):</span>
+                              <span>{pn.contactNumber || '—'} {pn.isPreferred && '⭐'}</span>
+                            </div>
+                          ))}
+                          <hr className="border-indigo-900 my-1.5" />
+                          {formData.emailAddresses.map((em, i) => (
+                            <div key={i} className={`flex justify-between items-center text-[11px] ${em.isPreferred ? 'text-white font-semibold font-sans' : 'text-indigo-200/70'}`}>
+                              <span>{em.emailType}:</span>
+                              <span className="truncate max-w-44">{em.emailAddress || '—'} {em.isPreferred && '⭐'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      <div className="pt-2 text-[10px] text-indigo-300/60 leading-relaxed italic border-t border-indigo-900">
+                        * This layout displays how details will align on invoice headers and billing documents.
+                      </div>
+                    </div>
+                  </div>
+                ) : null;
+              })()}
             </div>
           </div>
         )}
@@ -651,62 +1343,165 @@ export default function EditLead() {
 
         {/* TAB 3: Secondary Applicant */}
         {activeTab === 3 && (
-          <div className="space-y-5">
-            <div>
-              <label className={labelClass}>Relationship</label>
-              <select name="secondaryRelationship" value={formData.secondaryRelationship} onChange={handleChange} className={getInputClass('secondaryRelationship')}>
-                <option value="">Select Relationship</option>
-                <option value="Spouse">Spouse</option>
-                <option value="Child">Child</option>
-                <option value="Parent">Parent</option>
-                <option value="Sibling">Sibling</option>
-              </select>
+          <div className="space-y-6">
+            <div className="flex justify-between items-center border-b pb-3 mb-4 border-slate-200">
+              <h3 className="text-sm font-bold text-sky-900 uppercase tracking-wide">Secondary Applicants / Dependents</h3>
+              <button
+                type="button"
+                onClick={addSecondaryApplicant}
+                className="flex items-center text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 py-2 px-4 rounded-lg shadow transition-all duration-150"
+              >
+                <Plus className="w-4 h-4 mr-1.5" /> Add Secondary Applicant
+              </button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <label className={labelClass}>First Name</label>
-                <input type="text" name="secondaryFirstName" value={formData.secondaryFirstName} onChange={handleChange} className={getInputClass('secondaryFirstName')} />
+
+            {formData.secondaryApplicants.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 flex flex-col items-center justify-center space-y-2">
+                <Users className="w-8 h-8 text-slate-300" />
+                <div>
+                  <p className="font-semibold text-slate-500">No secondary applicants added yet.</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Click the button above to add family members or dependents.</p>
+                </div>
               </div>
-              <div>
-                <label className={labelClass}>Last Name</label>
-                <input type="text" name="secondaryLastName" value={formData.secondaryLastName} onChange={handleChange} className={getInputClass('secondaryLastName')} />
+            ) : (
+              <div className="space-y-6">
+                {formData.secondaryApplicants.map((applicant, idx) => (
+                  <div key={idx} className="relative bg-slate-50/40 border border-slate-200 rounded-2xl p-6 shadow-sm hover:border-slate-300 transition-all">
+                    <div className="absolute top-5 right-5">
+                      <button
+                        type="button"
+                        onClick={() => removeSecondaryApplicant(idx)}
+                        className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg border border-slate-200 bg-white shadow-sm transition-all"
+                        title="Remove applicant"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-5 flex items-center">
+                      <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-650 flex items-center justify-center mr-2 text-[10px] font-bold">
+                        {idx + 1}
+                      </span>
+                      Applicant #{idx + 1} {applicant.secondaryRelationship ? `(${applicant.secondaryRelationship})` : ''}
+                    </h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div className="md:col-span-2">
+                        <label className={labelClass}>Relationship</label>
+                        <select
+                          value={applicant.secondaryRelationship}
+                          onChange={(e) => handleSecondaryApplicantChange(idx, 'secondaryRelationship', e.target.value)}
+                          className={getInputClass(`secondary_${idx}_secondaryRelationship`)}
+                        >
+                          <option value="">Select Relationship</option>
+                          <option value="Spouse">Spouse</option>
+                          <option value="Child">Child</option>
+                          <option value="Parent">Parent</option>
+                          <option value="Sibling">Sibling</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className={labelClass}>First Name</label>
+                        <input
+                          type="text"
+                          value={applicant.secondaryFirstName}
+                          onChange={(e) => handleSecondaryApplicantChange(idx, 'secondaryFirstName', e.target.value)}
+                          className={getInputClass(`secondary_${idx}_secondaryFirstName`)}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClass}>Last Name</label>
+                        <input
+                          type="text"
+                          value={applicant.secondaryLastName}
+                          onChange={(e) => handleSecondaryApplicantChange(idx, 'secondaryLastName', e.target.value)}
+                          className={getInputClass(`secondary_${idx}_secondaryLastName`)}
+                        />
+                      </div>
+
+                      <div>
+                        <label className={labelClass}>Date of Birth</label>
+                        <input
+                          type="date"
+                          value={applicant.secondaryDob}
+                          onChange={(e) => handleSecondaryApplicantChange(idx, 'secondaryDob', e.target.value)}
+                          className={getInputClass(`secondary_${idx}_secondaryDob`)}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClass}>Passport Number</label>
+                        <input
+                          type="text"
+                          value={applicant.secondaryPassport}
+                          onChange={(e) => handleSecondaryApplicantChange(idx, 'secondaryPassport', e.target.value)}
+                          className={getInputClass(`secondary_${idx}_secondaryPassport`)}
+                        />
+                      </div>
+
+                      <div className="md:col-span-2 flex gap-3">
+                        <div className="w-24 shrink-0">
+                          <label className={labelClass}>Code</label>
+                          <select
+                            value={applicant.secondaryContactCode}
+                            onChange={(e) => handleSecondaryApplicantChange(idx, 'secondaryContactCode', e.target.value)}
+                            className={getInputClass(`secondary_${idx}_secondaryContactCode`)}
+                          >
+                            {countriesList.map(c => (
+                              <option key={`${c.code}-${c.dial_code}`} value={c.dial_code}>
+                                {c.dial_code} ({c.name})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex-1">
+                          <label className={labelClass}>Contact Number</label>
+                          <input
+                            type="text"
+                            value={applicant.secondaryContactNumber}
+                            onChange={(e) => handleSecondaryApplicantChange(idx, 'secondaryContactNumber', e.target.value)}
+                            className={getInputClass(`secondary_${idx}_secondaryContactNumber`)}
+                          />
+                          {errors[`secondary_${idx}_secondaryContactNumber`] && (
+                            <span className="text-xs text-red-500 mt-1 block">
+                              {errors[`secondary_${idx}_secondaryContactNumber`]}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className={labelClass}>Email Address</label>
+                        <input
+                          type="email"
+                          value={applicant.secondaryEmail}
+                          onChange={(e) => handleSecondaryApplicantChange(idx, 'secondaryEmail', e.target.value)}
+                          className={getInputClass(`secondary_${idx}_secondaryEmail`)}
+                        />
+                        {errors[`secondary_${idx}_secondaryEmail`] && (
+                          <span className="text-xs text-red-500 mt-1 block">
+                            {errors[`secondary_${idx}_secondaryEmail`]}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className={labelClass}>Residential Address</label>
+                        <textarea
+                          value={applicant.secondaryAddress}
+                          onChange={(e) => handleSecondaryApplicantChange(idx, 'secondaryAddress', e.target.value)}
+                          rows={2}
+                          className={getInputClass(`secondary_${idx}_secondaryAddress`)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <label className={labelClass}>Date of Birth</label>
-                <input type="date" name="secondaryDob" value={formData.secondaryDob} onChange={handleChange} className={getInputClass('secondaryDob')} />
-              </div>
-              <div>
-                <label className={labelClass}>Passport Number</label>
-                <input type="text" name="secondaryPassport" value={formData.secondaryPassport} onChange={handleChange} className={getInputClass('secondaryPassport')} />
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <div className="w-24 shrink-0">
-                <label className={labelClass}>Code</label>
-                <select name="secondaryContactCode" value={formData.secondaryContactCode} onChange={handleChange} className={getInputClass('secondaryContactCode')}>
-                  <option value="+91">+91</option>
-                  <option value="+61">+61</option>
-                  <option value="+1">+1</option>
-                </select>
-              </div>
-              <div className="flex-1">
-                <label className={labelClass}>Contact Number</label>
-                <input type="text" name="secondaryContactNumber" value={formData.secondaryContactNumber} onChange={handleChange} className={getInputClass('secondaryContactNumber')} />
-              </div>
-            </div>
-            <div>
-              <label className={labelClass}>Email Address</label>
-              <input type="email" name="secondaryEmail" value={formData.secondaryEmail} onChange={handleChange} className={getInputClass('secondaryEmail')} />
-            </div>
-            <div>
-              <label className={labelClass}>Residential Address</label>
-              <textarea name="secondaryAddress" value={formData.secondaryAddress} onChange={handleChange} rows={2} className={getInputClass('secondaryAddress')}></textarea>
-            </div>
+            )}
           </div>
-        )}
-      </div>
+        )
+      }</div>
 
       <div className="flex items-center mt-6 space-x-3">
         {activeTab > 0 && (

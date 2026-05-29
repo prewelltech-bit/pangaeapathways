@@ -9,8 +9,9 @@ import {
 import { format, startOfWeek, addDays, isSameDay, parseISO, isToday } from 'date-fns';
 
 export default function Appointments() {
-  const { user } = useAuth();
+  const { user, isCEO } = useAuth();
   const isManager = ['CEO', 'DIRECTOR', 'HR', 'BRANCH_ADMIN', 'ADMIN'].includes(user?.role);
+
 
   // States
   const [viewMode, setViewMode] = useState('calendar'); // 'calendar' (week board) or 'list'
@@ -544,13 +545,16 @@ export default function Appointments() {
                                 >
                                   <Edit className="w-4 h-4" />
                                 </button>
-                                <button
-                                  onClick={() => handleDelete(appt._id)}
-                                  className="p-2 bg-rose-50/50 hover:bg-rose-100 text-rose-700 rounded-xl transition-colors"
-                                  title="Delete"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                                {isCEO && (
+                                  <button
+                                    onClick={() => handleDelete(appt._id)}
+                                    className="p-2 bg-rose-50/50 hover:bg-rose-100 text-rose-700 rounded-xl transition-colors"
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+
                               </div>
 
                             </div>
@@ -676,13 +680,16 @@ export default function Appointments() {
                               <Edit className="w-4 h-4" />
                             </button>
                             
-                            <button
-                              onClick={() => handleDelete(appt._id)}
-                              className="p-2 bg-rose-50/50 hover:bg-rose-100 text-rose-700 rounded-xl transition-colors"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {isCEO && (
+                              <button
+                                onClick={() => handleDelete(appt._id)}
+                                className="p-2 bg-rose-50/50 hover:bg-rose-100 text-rose-700 rounded-xl transition-colors"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+
                           </div>
                         </td>
                       </tr>

@@ -30,6 +30,11 @@ env/
 # Databases & local files
 **/*.db
 **/*.sqlite3
+latest_otp.txt
+server/latest_otp.txt
+server/db_debug.txt
+lead_debug.txt
+temp_git_diff.txt
 
 # IDEs & System files
 .vscode/

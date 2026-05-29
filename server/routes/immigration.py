@@ -127,18 +127,108 @@ def create_immigration_case(
 
 @router.get("/cases")
 def get_immigration_cases(current_user: dict = Depends(get_current_user)):
-    cases = list(db.immigration_cases.find())
+    role = current_user["role"]
+    query = {}
+    if role != "CEO":
+        if role == "DIRECTOR":
+            branch_id = current_user.get("branchId")
+            if branch_id:
+                scoped_lead_ids = [l["_id"] for l in db.leads.find({"branchId": ObjectId(branch_id)}, {"_id": 1})]
+                query = {"clientId": {"$in": scoped_lead_ids}}
+            else:
+                country = current_user.get("country")
+                if country:
+                    scoped_lead_ids = [l["_id"] for l in db.leads.find({"country": country}, {"_id": 1})]
+                    query = {"clientId": {"$in": scoped_lead_ids}}
+                else:
+                    query = {"clientId": {"$in": []}}
+        elif role in ("BRANCH_ADMIN", "ADMIN"):
+            branch_id = current_user.get("branchId")
+            if branch_id:
+                try:
+                    scoped_lead_ids = [l["_id"] for l in db.leads.find({"branchId": ObjectId(branch_id)}, {"_id": 1})]
+                except Exception:
+                    scoped_lead_ids = [l["_id"] for l in db.leads.find({"branchId": branch_id}, {"_id": 1})]
+                query = {"clientId": {"$in": scoped_lead_ids}}
+            else:
+                query = {"clientId": {"$in": []}}
+        elif role == "HR":
+            branch_id = current_user.get("branchId")
+            if branch_id:
+                try:
+                    scoped_lead_ids = [l["_id"] for l in db.leads.find({"branchId": ObjectId(branch_id)}, {"_id": 1})]
+                except Exception:
+                    scoped_lead_ids = [l["_id"] for l in db.leads.find({"branchId": branch_id}, {"_id": 1})]
+                query = {"clientId": {"$in": scoped_lead_ids}}
+            elif current_user.get("country"):
+                scoped_lead_ids = [l["_id"] for l in db.leads.find({"country": current_user["country"]}, {"_id": 1})]
+                query = {"clientId": {"$in": scoped_lead_ids}}
+            else:
+                query = {}
+        else:
+            # Ordinary agents only see their owned leads' cases
+            scoped_lead_ids = [l["_id"] for l in db.leads.find({"ownerId": current_user["_id"]}, {"_id": 1})]
+            query = {"clientId": {"$in": scoped_lead_ids}}
+
+    cases = list(db.immigration_cases.find(query))
     
-    # Fetch lead names
-    lead_ids = list(set(case["clientId"] for case in cases if "clientId" in case))
-    leads_cursor = db.leads.find({"_id": {"$in": lead_ids}})
-    leads_map = {str(l["_id"]): l.get("fullName", "Unknown") for l in leads_cursor}
+    # Fetch lead names and numbers safely converting both ObjectId and string clientIds
+    lead_oids = []
+    for case in cases:
+        cid = case.get("clientId")
+        if cid:
+            if isinstance(cid, ObjectId):
+                lead_oids.append(cid)
+            elif isinstance(cid, str) and len(cid) == 24:
+                try:
+                    lead_oids.append(ObjectId(cid))
+                except Exception:
+                    pass
+
+    leads_cursor = db.leads.find({"_id": {"$in": lead_oids}})
+    leads_map = {}
+    for l in leads_cursor:
+        first = l.get("firstName")
+        last = l.get("lastName")
+        if first or last:
+            name = f"{first or ''} {last or ''}".strip()
+        else:
+            name = l.get("fullName") or "Unknown Client"
+            
+        leads_map[str(l["_id"])] = {
+            "name": name,
+            "leadNo": l.get("leadNo")
+        }
     
+    # TEMP DEBUG LOGGING
+    try:
+        debug_path = os.path.join(os.path.dirname(__file__), "db_debug.txt")
+        with open(debug_path, "w", encoding="utf-8") as f:
+            f.write(f"Cases count: {len(cases)}\n")
+            f.write(f"lead_oids: {[str(oid) for oid in lead_oids]}\n")
+            f.write(f"leads_map keys: {list(leads_map.keys())}\n")
+            f.write(f"leads_map contents: {leads_map}\n")
+            sample_leads = list(db.leads.find().limit(5))
+            f.write(f"Sample leads in DB: {[{'id': str(l['_id']), 'name': l.get('fullName'), 'first': l.get('firstName'), 'last': l.get('lastName')} for l in sample_leads]}\n")
+    except Exception as e:
+        print(f"Debug log error: {e}")
+
     for case in cases:
         case["_id"] = str(case["_id"])
         c_id = str(case["clientId"])
         case["clientId"] = c_id
-        case["clientName"] = leads_map.get(c_id, f"Lead #{c_id[:8]}")
+        
+        lead_info = leads_map.get(c_id)
+        if lead_info:
+            case["clientName"] = lead_info["name"]
+            if lead_info.get("leadNo"):
+                case["leadCode"] = f"LEAD-{str(lead_info['leadNo']).zfill(4)}"
+            else:
+                case["leadCode"] = None
+        else:
+            case["clientName"] = f"Lead #{c_id[:8]}"
+            case["leadCode"] = None
+            
         if "visaTemplateId" in case:
             case["visaTemplateId"] = str(case["visaTemplateId"])
         if "assignedAgentId" in case:
@@ -150,12 +240,75 @@ def get_immigration_case(case_id: str, current_user: dict = Depends(get_current_
     case = db.immigration_cases.find_one({"_id": ObjectId(case_id)})
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    # Verify access scope
+    role = current_user["role"]
+    has_access = False
+    if role == "CEO":
+        has_access = True
+    else:
+        # Check if they have access to the lead (clientId)
+        lead_id = case["clientId"]
+        lead = None
+        try:
+            lead = db.leads.find_one({"_id": ObjectId(lead_id)})
+        except Exception:
+            pass
+        if not lead:
+            lead = db.leads.find_one({"_id": str(lead_id)})
+
+        if lead:
+            if str(lead.get("ownerId")) == str(current_user["_id"]):
+                has_access = True
+            elif role == "DIRECTOR":
+                branch_id = current_user.get("branchId")
+                if branch_id:
+                    if str(lead.get("branchId")) == str(branch_id):
+                        has_access = True
+                elif lead.get("country") == current_user.get("country"):
+                    has_access = True
+            elif role in ("BRANCH_ADMIN", "ADMIN"):
+                if str(lead.get("branchId")) == str(current_user.get("branchId")):
+                    has_access = True
+            elif role == "HR":
+                if current_user.get("branchId"):
+                    if str(lead.get("branchId")) == str(current_user.get("branchId")):
+                        has_access = True
+                elif current_user.get("country"):
+                    if lead.get("country") == current_user.get("country"):
+                        has_access = True
+                else:
+                    has_access = True
+
+    if not has_access:
+        raise HTTPException(status_code=403, detail="Access denied to this case")
     case["_id"] = str(case["_id"])
     c_id = str(case["clientId"])
     case["clientId"] = c_id
     
-    lead = db.leads.find_one({"_id": ObjectId(c_id)})
-    case["clientName"] = lead.get("fullName", "Unknown") if lead else f"Lead #{c_id[:8]}"
+    # Try finding lead, supporting both string and ObjectId _id types
+    lead = None
+    try:
+        lead = db.leads.find_one({"_id": ObjectId(c_id)})
+    except Exception:
+        pass
+    if not lead:
+        lead = db.leads.find_one({"_id": c_id})
+        
+    if lead:
+        first = lead.get("firstName")
+        last = lead.get("lastName")
+        if first or last:
+            case["clientName"] = f"{first or ''} {last or ''}".strip()
+        else:
+            case["clientName"] = lead.get("fullName") or "Unknown Client"
+        if lead.get("leadNo"):
+            case["leadCode"] = f"LEAD-{str(lead.get('leadNo')).zfill(4)}"
+        else:
+            case["leadCode"] = None
+    else:
+        case["clientName"] = f"Lead #{c_id[:8]}"
+        case["leadCode"] = None
     
     if "visaTemplateId" in case:
         case["visaTemplateId"] = str(case["visaTemplateId"])
@@ -248,8 +401,29 @@ def get_public_case(tracking_id: str):
     c_id = str(case["clientId"])
     case["clientId"] = c_id
     
-    lead = db.leads.find_one({"_id": ObjectId(c_id)})
-    case["clientName"] = lead.get("fullName", "Unknown") if lead else f"Lead #{c_id[:8]}"
+    # Try finding lead, supporting both string and ObjectId _id types
+    lead = None
+    try:
+        lead = db.leads.find_one({"_id": ObjectId(c_id)})
+    except Exception:
+        pass
+    if not lead:
+        lead = db.leads.find_one({"_id": c_id})
+        
+    if lead:
+        first = lead.get("firstName")
+        last = lead.get("lastName")
+        if first or last:
+            case["clientName"] = f"{first or ''} {last or ''}".strip()
+        else:
+            case["clientName"] = lead.get("fullName") or "Unknown Client"
+        if lead.get("leadNo"):
+            case["leadCode"] = f"LEAD-{str(lead.get('leadNo')).zfill(4)}"
+        else:
+            case["leadCode"] = None
+    else:
+        case["clientName"] = f"Lead #{c_id[:8]}"
+        case["leadCode"] = None
     
     if "visaTemplateId" in case:
         case["visaTemplateId"] = str(case["visaTemplateId"])
@@ -294,9 +468,13 @@ def upload_public_document(
 
 @router.delete("/cases/{case_id}")
 def delete_immigration_case(case_id: str, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "CEO":
+        raise HTTPException(status_code=403, detail="Only CEO can delete immigration cases")
+
     result = db.immigration_cases.delete_one({"_id": ObjectId(case_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Case not found")
+
         
     # Clean up uploaded files for this case
     case_dir = os.path.join(UPLOAD_DIR, "cases", case_id)

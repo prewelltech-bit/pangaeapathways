@@ -7,6 +7,21 @@ import logo from "../../../public/logo/PP.png";
 import axios from 'axios';
 import './Login.css';
 
+const parseErrorDetail = (detail) => {
+  if (!detail) return '';
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(d => {
+      const field = d.loc ? d.loc[d.loc.length - 1] : '';
+      return `${field ? field + ': ' : ''}${d.msg || JSON.stringify(d)}`;
+    }).join(', ');
+  }
+  if (typeof detail === 'object') {
+    return detail.message || detail.msg || JSON.stringify(detail);
+  }
+  return String(detail);
+};
+
 export default function Login() {
     // view can be: 'login', 'mfa', 'forgot-email', 'forgot-otp', 'forgot-reset'
     const [view, setView] = useState('login');
@@ -35,7 +50,7 @@ export default function Login() {
                 navigate('/dashboard');
             }
         } catch (err) {
-            setError(err.response?.data?.detail || 'Login failed. Please check your credentials.');
+            setError(parseErrorDetail(err.response?.data?.detail) || 'Login failed. Please check your credentials.');
         } finally {
             setLoading(false);
         }
@@ -49,7 +64,7 @@ export default function Login() {
             await verifyMfa(email, code);
             navigate('/dashboard');
         } catch (err) {
-            setError(err.response?.data?.detail || 'Verification failed.');
+            setError(parseErrorDetail(err.response?.data?.detail) || 'Verification failed.');
         } finally {
             setLoading(false);
         }
@@ -63,7 +78,7 @@ export default function Login() {
             await googleLogin(credentialResponse.credential);
             navigate('/dashboard');
         } catch (err) {
-            setError(err.response?.data?.detail || 'Google sign-in failed. Make sure your account exists in the system.');
+            setError(parseErrorDetail(err.response?.data?.detail) || 'Google sign-in failed. Make sure your account exists in the system.');
         } finally {
             setLoading(false);
         }
@@ -81,7 +96,7 @@ export default function Login() {
             setView('forgot-otp');
             setCode('');
         } catch (err) {
-            setError(err.response?.data?.detail || 'Failed to send OTP.');
+            setError(parseErrorDetail(err.response?.data?.detail) || 'Failed to send OTP.');
         } finally {
             setLoading(false);
         }
@@ -97,7 +112,7 @@ export default function Login() {
             setSuccessMsg('OTP verified! Please enter your new password.');
             setView('forgot-reset');
         } catch (err) {
-            setError(err.response?.data?.detail || 'Invalid or expired OTP.');
+            setError(parseErrorDetail(err.response?.data?.detail) || 'Invalid or expired OTP.');
         } finally {
             setLoading(false);
         }
@@ -117,7 +132,7 @@ export default function Login() {
                 setSuccessMsg('');
             }, 2000);
         } catch (err) {
-            setError(err.response?.data?.detail || 'Failed to reset password.');
+            setError(parseErrorDetail(err.response?.data?.detail) || 'Failed to reset password.');
         } finally {
             setLoading(false);
         }

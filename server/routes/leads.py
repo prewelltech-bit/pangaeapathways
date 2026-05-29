@@ -7,14 +7,14 @@ Leads route — RBAC enforced:
 """
 import os
 import shutil
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
 from bson import ObjectId
 from datetime import datetime, timezone
 
 from utils.db import db
 from middleware.auth import get_current_user
-from models.schemas import LeadCreate, LeadUpdate, LeadTransferRequest
+from models.schemas import LeadCreate, LeadUpdate, LeadTransferRequest, DuplicateLeadRequest
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "public", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -32,23 +32,72 @@ def _serialize_lead(lead: dict) -> dict:
     return lead
 
 
+def _sync_flat_properties(lead_dict: dict):
+    # 1. Sync phone from phoneNumbers
+    if "phoneNumbers" in lead_dict and lead_dict["phoneNumbers"]:
+        pref = next((p for p in lead_dict["phoneNumbers"] if p.get("isPreferred")), lead_dict["phoneNumbers"][0])
+        code = pref.get("contactCode") or "+91"
+        num = pref.get("contactNumber") or ""
+        lead_dict["phone"] = f"{code} {num}".strip() if num else ""
+        lead_dict["contactCode"] = code
+        lead_dict["contactType"] = pref.get("contactType") or "Personal"
+        
+    # 2. Sync email from emailAddresses
+    if "emailAddresses" in lead_dict and lead_dict["emailAddresses"]:
+        pref = next((e for e in lead_dict["emailAddresses"] if e.get("isPreferred")), lead_dict["emailAddresses"][0])
+        lead_dict["email"] = pref.get("emailAddress") or ""
+        lead_dict["emailType"] = pref.get("emailType") or "Personal"
+        
+    # 3. Sync address from addresses
+    if "addresses" in lead_dict and lead_dict["addresses"]:
+        pref = next((a for a in lead_dict["addresses"] if a.get("isDefault")), lead_dict["addresses"][0])
+        lead_dict["addressLine1"] = pref.get("addressLine1") or ""
+        lead_dict["addressLine2"] = pref.get("addressLine2") or ""
+        lead_dict["country"] = pref.get("country") or ""
+        lead_dict["state"] = pref.get("state") or ""
+        lead_dict["city"] = pref.get("city") or ""
+        lead_dict["zipcode"] = pref.get("zipcode") or ""
+        lead_dict["addressType"] = pref.get("addressType") or "Permanent"
+
+
 # ─── Create Lead ──────────────────────────────────────────────────────────────
 
 @router.post("")
-def create_lead(lead: LeadCreate, current_user=Depends(get_current_user)):
+async def create_lead(request: Request, lead: LeadCreate, current_user=Depends(get_current_user)):
     """All roles can create leads, but Branch Admins can only create for their own branch."""
     lead_dict = lead.model_dump(exclude_unset=True)
+    _sync_flat_properties(lead_dict)
+
+    # Debug logging
+    try:
+        import json
+        from bson import json_util
+        raw_body = await request.json()
+        debug_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "lead_debug.txt")
+        with open(debug_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "raw_body": raw_body,
+                "parsed_lead_dict": lead_dict
+            }, default=json_util.default, indent=2))
+    except Exception as e:
+        print(f"Error in debug logging: {e}")
 
     # Branch Admins can only create leads for their own branch
     if current_user["role"] in ("BRANCH_ADMIN", "ADMIN"):
         if str(current_user.get("branchId")) != lead.branchId:
             raise HTTPException(status_code=403, detail="Branch Admins can only create leads for their own branch")
 
-    # Directors can only create leads for branches in their country
+    # Directors can only create leads for their own branch
     if current_user["role"] == "DIRECTOR":
-        branch = db.branches.find_one({"_id": ObjectId(lead.branchId)})
-        if not branch or branch.get("country") != current_user.get("country"):
-            raise HTTPException(status_code=403, detail="Directors can only create leads for branches in their country")
+        branch_id = current_user.get("branchId")
+        if branch_id:
+            if str(branch_id) != lead.branchId:
+                raise HTTPException(status_code=403, detail="Directors can only create leads for their own branch")
+        else:
+            # Fallback for legacy Directors
+            branch = db.branches.find_one({"_id": ObjectId(lead.branchId)})
+            if not branch or branch.get("country") != current_user.get("country"):
+                raise HTTPException(status_code=403, detail="Directors can only create leads for branches in their country")
 
     lead_dict["branchId"] = ObjectId(lead.branchId)
     if lead.ownerId:
@@ -62,6 +111,11 @@ def create_lead(lead: LeadCreate, current_user=Depends(get_current_user)):
 
     if lead.consentContact:
         lead_dict["consentAt"] = datetime.now(timezone.utc)
+
+    # Assign persistent leadNo
+    max_lead = db.leads.find_one(sort=[("leadNo", -1)])
+    next_lead_no = (max_lead.get("leadNo") or 0) + 1 if max_lead else 1
+    lead_dict["leadNo"] = next_lead_no
 
     result = db.leads.insert_one(lead_dict)
     return {"message": "Lead created successfully", "id": str(result.inserted_id)}
@@ -79,11 +133,15 @@ def get_leads(scope: str = "all", current_user=Depends(get_current_user)):
     else:
         role = current_user["role"]
         if role == "DIRECTOR":
-            country = current_user.get("country")
-            if country:
-                country_branches = list(db.branches.find({"country": country}, {"_id": 1}))
-                branch_ids = [b["_id"] for b in country_branches]
-                query["branchId"] = {"$in": branch_ids}
+            branch_id = current_user.get("branchId")
+            if branch_id:
+                query["branchId"] = branch_id
+            else:
+                country = current_user.get("country")
+                if country:
+                    country_branches = list(db.branches.find({"country": country}, {"_id": 1}))
+                    branch_ids = [b["_id"] for b in country_branches]
+                    query["branchId"] = {"$in": branch_ids}
         elif role in ("BRANCH_ADMIN", "ADMIN"):
             branch_id = current_user.get("branchId")
             if branch_id:
@@ -93,7 +151,13 @@ def get_leads(scope: str = "all", current_user=Depends(get_current_user)):
 
     leads = []
     for lead in leads_cursor:
-        leads.append(_serialize_lead(lead))
+        serialized = _serialize_lead(lead)
+        if serialized.get("ownerId"):
+            owner = db.users.find_one({"_id": ObjectId(serialized["ownerId"])})
+            serialized["ownerName"] = owner.get("name") if owner else "Unassigned"
+        else:
+            serialized["ownerName"] = "Unassigned"
+        leads.append(serialized)
     return leads
 
 
@@ -149,7 +213,59 @@ def get_lead(lead_id: str, current_user=Depends(get_current_user)):
         serialized["branchName"] = branch.get("name") if branch else "Unknown"
     else:
         serialized["branchName"] = "Unknown"
-        
+
+    # Fetch related leads sharing the same email or phone (flat or inside lists)
+    phones_to_check = set()
+    if lead.get("phone"):
+        phones_to_check.add(lead["phone"].strip())
+        parts = lead["phone"].split(None, 1)
+        if len(parts) > 1:
+            phones_to_check.add(parts[1].strip())
+    if lead.get("phoneNumbers"):
+        for pn in lead["phoneNumbers"]:
+            num = pn.get("contactNumber")
+            if num:
+                phones_to_check.add(num.strip())
+                code = pn.get("contactCode") or ""
+                if code:
+                    phones_to_check.add(f"{code} {num}".strip())
+                    phones_to_check.add(f"{code}{num}".strip())
+
+    emails_to_check = set()
+    if lead.get("email"):
+        emails_to_check.add(lead["email"].strip().lower())
+    if lead.get("emailAddresses"):
+        for em in lead["emailAddresses"]:
+            email_val = em.get("emailAddress")
+            if email_val:
+                emails_to_check.add(email_val.strip().lower())
+
+    or_clauses = []
+    for email in emails_to_check:
+        or_clauses.append({"email": email})
+        or_clauses.append({"emailAddresses.emailAddress": email})
+    for phone in phones_to_check:
+        or_clauses.append({"phone": phone})
+        or_clauses.append({"phoneNumbers.contactNumber": phone})
+
+    related_leads = []
+    if or_clauses:
+        related_cursor = db.leads.find({"$or": or_clauses}).sort("createdAt", -1)
+        for r_lead in related_cursor:
+            related_leads.append({
+                "id": str(r_lead["_id"]),
+                "productLine": r_lead.get("productLine", "Unknown"),
+                "fullName": r_lead.get("fullName", "Unknown")
+            })
+
+    if not any(r["id"] == str(lead["_id"]) for r in related_leads):
+        related_leads.append({
+            "id": str(lead["_id"]),
+            "productLine": lead.get("productLine", "Unknown"),
+            "fullName": lead.get("fullName", "Unknown")
+        })
+
+    serialized["relatedLeads"] = related_leads
     return serialized
 
 
@@ -170,11 +286,16 @@ def update_lead(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    # Directors can only edit leads in their country
+    # Directors can only edit leads in their branch
     if current_user["role"] == "DIRECTOR":
-        branch = db.branches.find_one({"_id": lead.get("branchId")})
-        if not branch or branch.get("country") != current_user.get("country"):
-            raise HTTPException(status_code=403, detail="Cannot edit leads outside your country")
+        branch_id = current_user.get("branchId")
+        if branch_id:
+            if str(lead.get("branchId")) != str(branch_id):
+                raise HTTPException(status_code=403, detail="Cannot edit leads outside your branch")
+        else:
+            branch = db.branches.find_one({"_id": lead.get("branchId")})
+            if not branch or branch.get("country") != current_user.get("country"):
+                raise HTTPException(status_code=403, detail="Cannot edit leads outside your country")
 
     # Branch Admins/Admins can only edit leads in their own branch
     if current_user["role"] in ("BRANCH_ADMIN", "ADMIN"):
@@ -182,6 +303,7 @@ def update_lead(
             raise HTTPException(status_code=403, detail="Branch Admins can only edit leads in their own branch")
 
     update_dict = updates.model_dump(exclude_unset=True)
+    _sync_flat_properties(update_dict)
     if not update_dict:
         return {"message": "No updates provided"}
 
@@ -232,10 +354,14 @@ def transfer_leads(req: LeadTransferRequest, current_user=Depends(get_current_us
     query = {"ownerId": ObjectId(req.sourceUserId)}
     
     if current_user["role"] == "DIRECTOR":
-        country = current_user.get("country")
-        country_branches = list(db.branches.find({"country": country}, {"_id": 1}))
-        branch_ids = [b["_id"] for b in country_branches]
-        query["branchId"] = {"$in": branch_ids}
+        branch_id = current_user.get("branchId")
+        if branch_id:
+            query["branchId"] = branch_id
+        else:
+            country = current_user.get("country")
+            country_branches = list(db.branches.find({"country": country}, {"_id": 1}))
+            branch_ids = [b["_id"] for b in country_branches]
+            query["branchId"] = {"$in": branch_ids}
 
     # If limit is specified, fetch IDs first
     if req.limit and req.limit > 0:
@@ -289,9 +415,14 @@ def get_lead_notes(lead_id: str, current_user=Depends(get_current_user)):
         if role == "CEO":
             has_access = True
         elif role == "DIRECTOR":
-            branch = db.branches.find_one({"_id": lead.get("branchId")})
-            if branch and branch.get("country") == current_user.get("country"):
-                has_access = True
+            branch_id = current_user.get("branchId")
+            if branch_id:
+                if str(lead.get("branchId")) == str(branch_id):
+                    has_access = True
+            else:
+                branch = db.branches.find_one({"_id": lead.get("branchId")})
+                if branch and branch.get("country") == current_user.get("country"):
+                    has_access = True
         elif role in ("BRANCH_ADMIN", "ADMIN"):
             if str(lead.get("branchId")) == str(current_user.get("branchId")):
                 has_access = True
@@ -335,9 +466,14 @@ async def create_lead_note(
         if role == "CEO":
             has_access = True
         elif role == "DIRECTOR":
-            branch = db.branches.find_one({"_id": lead.get("branchId")})
-            if branch and branch.get("country") == current_user.get("country"):
-                has_access = True
+            branch_id = current_user.get("branchId")
+            if branch_id:
+                if str(lead.get("branchId")) == str(branch_id):
+                    has_access = True
+            else:
+                branch = db.branches.find_one({"_id": lead.get("branchId")})
+                if branch and branch.get("country") == current_user.get("country"):
+                    has_access = True
         elif role in ("BRANCH_ADMIN", "ADMIN"):
             if str(lead.get("branchId")) == str(current_user.get("branchId")):
                 has_access = True
@@ -454,3 +590,180 @@ def download_note_attachment(note_id: str, current_user=Depends(get_current_user
         raise HTTPException(status_code=404, detail="File missing on disk")
         
     return FileResponse(path=file_path, filename=attachment["filename"])
+
+
+# ─── Duplicate Lead and Service Check Endpoints ──────────────────────────────
+
+@router.get("/{lead_id}/duplicate-check")
+def check_duplicate_lead(
+    lead_id: str,
+    current_user=Depends(get_current_user)
+):
+    lead = db.leads.find_one({"_id": ObjectId(lead_id)})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    phones_to_check = set()
+    if lead.get("phone"):
+        phones_to_check.add(lead["phone"].strip())
+        parts = lead["phone"].split(None, 1)
+        if len(parts) > 1:
+            phones_to_check.add(parts[1].strip())
+    if lead.get("phoneNumbers"):
+        for pn in lead["phoneNumbers"]:
+            num = pn.get("contactNumber")
+            if num:
+                phones_to_check.add(num.strip())
+                code = pn.get("contactCode") or ""
+                if code:
+                    phones_to_check.add(f"{code} {num}".strip())
+                    phones_to_check.add(f"{code}{num}".strip())
+
+    emails_to_check = set()
+    if lead.get("email"):
+        emails_to_check.add(lead["email"].strip().lower())
+    if lead.get("emailAddresses"):
+        for em in lead["emailAddresses"]:
+            email_val = em.get("emailAddress")
+            if email_val:
+                emails_to_check.add(email_val.strip().lower())
+
+    or_clauses = []
+    for email in emails_to_check:
+        or_clauses.append({"email": email})
+        or_clauses.append({"emailAddresses.emailAddress": email})
+    for phone in phones_to_check:
+        or_clauses.append({"phone": phone})
+        or_clauses.append({"phoneNumbers.contactNumber": phone})
+        
+    if not or_clauses:
+        return []
+        
+    duplicates = list(db.leads.find({
+        "$or": or_clauses
+    }))
+    
+    results = []
+    for d in duplicates:
+        branch_name = "Unknown"
+        if d.get("branchId"):
+            branch = db.branches.find_one({"_id": ObjectId(d["branchId"])})
+            if branch:
+                branch_name = branch.get("name", "Unknown")
+                
+        assignee_name = "Unassigned"
+        if d.get("ownerId"):
+            owner = db.users.find_one({"_id": ObjectId(d["ownerId"])})
+            if owner:
+                assignee_name = owner.get("name", "Unassigned")
+                
+        results.append({
+            "id": str(d["_id"]),
+            "branchName": branch_name,
+            "leadCode": f"LEAD-{str(d.get('leadNo') or 1).zfill(4)}",
+            "createdAt": d.get("createdAt").isoformat() if isinstance(d.get("createdAt"), datetime) else str(d.get("createdAt")),
+            "service": d.get("productLine", "Unknown"),
+            "assigneeName": assignee_name
+        })
+        
+    return results
+
+
+@router.post("/{lead_id}/duplicate")
+def duplicate_lead(
+    lead_id: str,
+    req: DuplicateLeadRequest,
+    current_user=Depends(get_current_user)
+):
+    lead = db.leads.find_one({"_id": ObjectId(lead_id)})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    # Ensure leadNo is preserved from the original lead
+    lead_no = lead.get("leadNo")
+    if not lead_no:
+        max_lead = db.leads.find_one(sort=[("leadNo", -1)])
+        lead_no = (max_lead.get("leadNo") or 0) + 1 if max_lead else 1
+        db.leads.update_one({"_id": lead["_id"]}, {"$set": {"leadNo": lead_no}})
+
+    new_lead = dict(lead)
+    new_lead.pop("_id", None)
+    new_lead["leadNo"] = lead_no
+    
+    new_lead["productLine"] = req.productLine
+    new_lead["ownerId"] = ObjectId(req.ownerId)
+    new_lead["leadStatus"] = "NEW"
+    new_lead["createdAt"] = datetime.now(timezone.utc)
+    new_lead["updatedAt"] = datetime.now(timezone.utc)
+    new_lead["createdBy"] = current_user["_id"]
+    
+    if req.comments:
+        new_lead["notes"] = req.comments
+        
+    new_service = {
+        "productLine": req.productLine,
+        "assignTo": str(req.ownerId),
+        "leadStatus": "NEW",
+        "leadQuality": "1",
+        "source": lead.get("source", "WEBSITE"),
+        "comments": req.comments or ""
+    }
+    new_lead["services"] = [new_service]
+    
+    result = db.leads.insert_one(new_lead)
+    new_id = str(result.inserted_id)
+    
+    # Audit log
+    db.activities.insert_one({
+        "leadId": ObjectId(lead_id),
+        "userId": ObjectId(current_user["_id"]),
+        "type": "SYSTEM",
+        "body": f"Duplicated lead for service {req.productLine}. New Lead ID: {new_id}",
+        "createdAt": datetime.now(timezone.utc)
+    })
+    
+    db.activities.insert_one({
+        "leadId": ObjectId(new_id),
+        "userId": ObjectId(current_user["_id"]),
+        "type": "SYSTEM",
+        "body": f"Lead created by duplication from original Lead ID: {lead_id} with service {req.productLine}",
+        "createdAt": datetime.now(timezone.utc)
+    })
+    
+    if req.comments:
+        db.notes.insert_one({
+            "leadId": ObjectId(new_id),
+            "body": req.comments,
+            "sendToClient": req.sendEmail,
+            "sendToAssigned": True,
+            "sendToStaff": False,
+            "sendToOthers": False,
+            "createdAt": datetime.now(timezone.utc),
+            "createdBy": ObjectId(current_user["_id"]),
+            "creatorName": current_user.get("name", "Unknown User")
+        })
+        
+    if req.followupType:
+        db.activities.insert_one({
+            "leadId": ObjectId(new_id),
+            "userId": ObjectId(current_user["_id"]),
+            "type": req.followupType,
+            "subject": f"Scheduled {req.followupType}",
+            "outcome": "Follow Up Later",
+            "body": req.comments or f"Scheduled followup for service {req.productLine}",
+            "createdAt": datetime.now(timezone.utc)
+        })
+        
+    return {"message": "Lead duplicated successfully", "id": new_id}
+
+
+# Temporary startup debug dump
+try:
+    import json
+    from bson import json_util
+    leads = list(db.leads.find().sort("createdAt", -1).limit(5))
+    debug_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "lead_debug.txt")
+    with open(debug_path, "w", encoding="utf-8") as f:
+        f.write(json.dumps(leads, default=json_util.default, indent=2))
+    print(f"SUCCESS: Wrote {len(leads)} leads to lead_debug.txt")
+except Exception as e:
+    print(f"Error in startup debug dump: {e}")

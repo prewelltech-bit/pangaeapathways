@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Plane, Calendar, User, ChevronDown, CheckCircle, Clock, AlertCircle, Search, X, Check, XCircle, FileText, Trash2, Copy } from 'lucide-react';
+import { useAuth } from '../lib/AuthContext';
+
 
 
 const KANBAN_STAGES = [
@@ -8,6 +10,7 @@ const KANBAN_STAGES = [
 ];
 
 const AgentDashboard = () => {
+  const { isCEO } = useAuth();
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -228,8 +231,8 @@ const AgentDashboard = () => {
                       <div className="flex items-center justify-between text-xs text-slate-500 font-medium mb-4 bg-slate-50 p-2 rounded-lg border border-slate-100 gap-2">
                         <div className="flex items-center min-w-0">
                           <User className="w-3.5 h-3.5 mr-2 text-indigo-400 shrink-0" />
-                          <span className="truncate" title={caseItem.clientName || caseItem.clientId}>
-                            Client: {caseItem.clientName || caseItem.clientId}
+                          <span className="truncate" title={caseItem.clientName ? `${caseItem.clientName}${caseItem.leadCode ? ` (${caseItem.leadCode})` : ''}` : caseItem.clientId}>
+                            Client: {caseItem.clientName}{caseItem.leadCode ? ` (${caseItem.leadCode})` : ''}
                           </span>
                         </div>
                         <button
@@ -319,9 +322,9 @@ const AgentDashboard = () => {
                             Approved
                           </span>
                         </div>
-                        <h3 className="font-bold text-slate-700 text-sm truncate flex items-center gap-1.5" title={caseItem.clientName || caseItem.clientId}>
+                        <h3 className="font-bold text-slate-700 text-sm truncate flex items-center gap-1.5" title={caseItem.clientName ? `${caseItem.clientName}${caseItem.leadCode ? ` (${caseItem.leadCode})` : ''}` : caseItem.clientId}>
                           <User className="w-4 h-4 text-indigo-400 shrink-0" />
-                          <span className="truncate">{caseItem.clientName || caseItem.clientId}</span>
+                          <span className="truncate">{caseItem.clientName}{caseItem.leadCode ? ` (${caseItem.leadCode})` : ''}</span>
                         </h3>
                       </div>
                       
@@ -430,13 +433,16 @@ const AgentDashboard = () => {
                             Manage Documents
                           </button>
                           
-                          <button 
-                            onClick={() => handleDeleteCase(caseItem._id, caseItem.trackingId)}
-                            className="flex items-center justify-center p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 transition-colors"
-                            title="Delete Case"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {isCEO && (
+                            <button 
+                              onClick={() => handleDeleteCase(caseItem._id, caseItem.trackingId)}
+                              className="flex items-center justify-center p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 transition-colors"
+                              title="Delete Case"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+
                         </div>
 
                       </div>
@@ -487,7 +493,7 @@ const AgentDashboard = () => {
                 </div>
                 <div className="text-slate-500 font-medium text-sm flex items-center gap-2 flex-wrap">
                   <span className="flex items-center">
-                    <User className="w-4 h-4 mr-2 text-slate-400" /> Client: {selectedCase.clientName || selectedCase.clientId}
+                    <User className="w-4 h-4 mr-2 text-slate-400" /> Client: {selectedCase.clientName}{selectedCase.leadCode ? ` (${selectedCase.leadCode})` : ''}
                   </span>
                   <button
                     onClick={(e) => handleCopy(selectedCase.clientName || selectedCase.clientId, 'modal-client', selectedCase._id, e)}

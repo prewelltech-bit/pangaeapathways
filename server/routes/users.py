@@ -220,7 +220,16 @@ def deactivate_user(user_id: str, current_user=Depends(get_current_user)):
     if current_user["role"] in ("BRANCH_ADMIN", "ADMIN"):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    target = db.users.find_one({"_id": ObjectId(user_id)})
+    # Prevent self-deactivation
+    if str(current_user["_id"]) == user_id:
+        raise HTTPException(status_code=400, detail="You cannot deactivate your own account")
+
+    try:
+        oid = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+
+    target = db.users.find_one({"_id": oid})
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -236,7 +245,7 @@ def deactivate_user(user_id: str, current_user=Depends(get_current_user)):
         if target["role"] == "DIRECTOR":
             raise HTTPException(status_code=403, detail="Directors cannot deactivate other Directors")
 
-    db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"isActive": False}})
+    db.users.update_one({"_id": oid}, {"$set": {"isActive": False}})
     return {"message": "User deactivated successfully"}
 
 
@@ -246,7 +255,12 @@ def activate_user(user_id: str, current_user=Depends(get_current_user)):
     if current_user["role"] in ("BRANCH_ADMIN", "ADMIN"):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    target = db.users.find_one({"_id": ObjectId(user_id)})
+    try:
+        oid = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+
+    target = db.users.find_one({"_id": oid})
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -258,8 +272,9 @@ def activate_user(user_id: str, current_user=Depends(get_current_user)):
         elif target.get("country") != current_user.get("country"):
             raise HTTPException(status_code=403, detail="Cannot activate users outside your country")
 
-    db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"isActive": True}})
+    db.users.update_one({"_id": oid}, {"$set": {"isActive": True}})
     return {"message": "User activated successfully"}
+
 
 
 @router.delete("/{user_id}")

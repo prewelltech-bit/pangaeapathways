@@ -44,7 +44,7 @@ export default function Profile() {
       setMessage({ type: 'success', text: 'OTP sent to your email!' });
       setForgotPasswordState('email-sent');
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to send OTP.' });
+      setMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to send OTP.' });
     } finally {
       setSaving(false);
     }

@@ -37,8 +37,8 @@ Pangaea Pathways Team
 """
         msg.attach(MIMEText(body, 'plain'))
 
-        # Setup SMTP connection (TLS)
-        server = smtplib.SMTP(smtp_host, smtp_port)
+        # Setup SMTP connection (TLS) with a 5-second timeout to prevent hanging the server
+        server = smtplib.SMTP(smtp_host, smtp_port, timeout=5.0)
         server.starttls()
         server.login(smtp_user, smtp_password)
         server.sendmail(smtp_user, to_email, msg.as_string())

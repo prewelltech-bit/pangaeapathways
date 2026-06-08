@@ -327,6 +327,11 @@ def forgot_password(req: ForgotPasswordRequest, _rl=Depends(limiter.limit(3, 60)
     email_sent = send_otp_email(req.email, otp)
     
     if not email_sent:
+        if _IS_PRODUCTION:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to send OTP email. Please check your SMTP environment variables (SMTP_USER/SMTP_PASSWORD) on Render."
+            )
         # Fallback for development/testing: print the OTP in the server console
         print(f"\n========================================================")
         print(f"[DEV FALLBACK] PASSWORD RESET OTP FOR {req.email} IS: {otp}")

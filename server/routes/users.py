@@ -28,11 +28,18 @@ def _serialize(user: dict) -> dict:
 
 @router.patch("/me")
 def update_my_profile(data: UserProfileUpdate, current_user=Depends(get_current_user)):
-    """Allows the current user to update their own profile (name, password)."""
+    """Allows the current user to update their own profile (name, email, password)."""
     update_data = {}
     if data.name:
         update_data["name"] = data.name
-    
+
+    if data.email and data.email != current_user.get("email"):
+        # Make sure the new email is not already taken by another user
+        existing = db.users.find_one({"email": data.email, "_id": {"$ne": current_user["_id"]}})
+        if existing:
+            raise HTTPException(status_code=400, detail="This email is already in use by another account.")
+        update_data["email"] = data.email
+
     if data.password:
         if not data.oldPassword:
             raise HTTPException(status_code=400, detail="Current password is required to change password.")

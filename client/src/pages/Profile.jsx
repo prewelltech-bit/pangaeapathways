@@ -10,7 +10,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
 
   const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ name: '', password: '', oldPassword: '' });
+  const [editForm, setEditForm] = useState({ name: '', email: '', password: '', oldPassword: '' });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
@@ -25,7 +25,7 @@ export default function Profile() {
     try {
       const res = await axios.get('/api/users/me');
       setProfileData(res.data);
-      setEditForm({ name: res.data.name, password: '', oldPassword: '' });
+      setEditForm({ name: res.data.name, email: res.data.email, password: '', oldPassword: '' });
     } catch (err) {
       console.error('Failed to fetch profile', err);
     } finally {
@@ -73,6 +73,12 @@ export default function Profile() {
       if (editForm.name.trim() && editForm.name !== profileData.name) {
         payload.name = editForm.name.trim();
         nameUpdated = true;
+      }
+
+      // Handle email update
+      if (editForm.email.trim() && editForm.email !== profileData.email) {
+        payload.email = editForm.email.trim();
+        nameUpdated = true; // reuse flag to trigger patch
       }
 
       let pwdUpdated = false;
@@ -201,6 +207,11 @@ export default function Profile() {
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Full Name</label>
                   <input type="text" name="name" value={editForm.name} onChange={handleEditChange} required className="w-full border border-slate-300 rounded-lg py-2.5 px-3 text-sm focus:ring-sky-500 focus:border-sky-500" />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">Email Address <span className="text-xs text-slate-400 font-normal">(Login email)</span></label>
+                  <input type="email" name="email" value={editForm.email} onChange={handleEditChange} className="w-full border border-slate-300 rounded-lg py-2.5 px-3 text-sm focus:ring-sky-500 focus:border-sky-500" />
                 </div>
 
                 <div>

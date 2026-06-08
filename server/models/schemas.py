@@ -65,6 +65,7 @@ class VerifyEnableMfa(BaseModel):
 
 class UserProfileUpdate(BaseModel):
     name: Optional[str] = None
+    email: Optional[EmailStr] = None
     oldPassword: Optional[str] = None
     password: Optional[str] = None
 

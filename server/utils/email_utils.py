@@ -21,7 +21,8 @@ def send_otp_email(to_email: str, otp: str) -> bool:
 
     try:
         msg = MIMEMultipart()
-        msg['From'] = smtp_user
+        smtp_from = os.environ.get("SMTP_FROM_EMAIL", smtp_user)
+        msg['From'] = f"Pangaea Pathways CRM <{smtp_from}>"
         msg['To'] = to_email
         msg['Subject'] = "Pangaea Pathways CRM - Password Reset OTP"
 

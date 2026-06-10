@@ -3,6 +3,7 @@
 .layout-container {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   background: #f8fafc;
 }
 
@@ -251,6 +252,7 @@
 
   .layout-content {
     padding: 1rem;
+    padding-bottom: 2.5rem;
   }
 }
 
@@ -274,6 +276,11 @@
     align-items: center;
     justify-content: center;
   }
+
+  .layout-content {
+    padding: 1rem;
+    padding-bottom: 4rem; /* Additional bottom padding for mobile systems */
+  }
 }
 
 @media (max-width: 480px) {
@@ -292,5 +299,6 @@
 
   .layout-content {
     padding: 0.75rem;
+    padding-bottom: 5rem; /* Extra padding for mobile browsers with toolbars */
   }
 }

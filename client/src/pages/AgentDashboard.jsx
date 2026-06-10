@@ -175,7 +175,7 @@ const AgentDashboard = () => {
       </div>
       
       {activeTab === 'pipeline' ? (
-        <div className="flex space-x-6 overflow-x-auto pb-8 snap-x">
+        <div className="flex space-x-4 md:space-x-6 overflow-x-auto pb-8 snap-x snap-mandatory">
           {KANBAN_STAGES.map(stage => {
              // Filter by stage AND search term AND 24-hour approval logic
              const stageCases = cases.filter(c => {
@@ -194,8 +194,8 @@ const AgentDashboard = () => {
              });
              
              return (
-            <div key={stage} className="snap-center min-w-[340px] w-[340px] flex flex-col h-[75vh]">
-              <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-5 flex flex-col h-full">
+            <div key={stage} className="snap-center snap-always min-w-[280px] sm:min-w-[340px] w-[280px] sm:w-[340px] flex flex-col h-[65vh] md:h-[75vh]">
+              <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-4 sm:p-5 flex flex-col h-full">
                 <div className="flex justify-between items-center mb-5 pb-4 border-b border-slate-100">
                   <h2 className="font-bold text-lg text-slate-700 tracking-wide">{stage}</h2>
                   <span className="bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full shadow-inner">

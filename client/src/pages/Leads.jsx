@@ -223,26 +223,30 @@ export default function Leads() {
               <div
                 key={lead._id}
                 onClick={() => navigate(`/leads/${lead._id}`)}
-                className="grid grid-cols-1 md:grid-cols-12 px-4 py-4 hover:bg-sky-50/50 transition-colors items-center gap-2 md:gap-0 cursor-pointer border-b border-slate-100"
+                className="grid grid-cols-1 md:grid-cols-12 px-4 py-4 hover:bg-sky-50/50 transition-colors items-start md:items-center gap-3 md:gap-0 cursor-pointer border-b border-slate-100"
                 style={{ borderLeft: '3px solid #C084FC' }}
               >
                 {/* LEAD */}
                 <div className="col-span-2 space-y-1">
-                  <Link 
-                    to={`/leads/${lead._id}`} 
-                    className="text-sm font-bold text-slate-800 hover:text-sky-700 transition-colors"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    LEAD-{String(lead.leadNo || 1).padStart(4, '0')}
-                  </Link>
+                  <div className="flex justify-between items-center md:block">
+                    <Link 
+                      to={`/leads/${lead._id}`} 
+                      className="text-sm font-bold text-slate-800 hover:text-sky-700 transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      LEAD-{String(lead.leadNo || 1).padStart(4, '0')}
+                    </Link>
+                    <span className="md:hidden text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-500 font-semibold">{formatSource(lead.source)}</span>
+                  </div>
                   <div className="text-[11px] text-slate-500 font-medium">
                     {format(new Date(lead.createdAt), 'dd-MM-yyyy HH:mm')}
                   </div>
-                  <div className="text-[11px] text-slate-400 font-semibold">{formatSource(lead.source)}</div>
+                  <div className="hidden md:block text-[11px] text-slate-400 font-semibold">{formatSource(lead.source)}</div>
                 </div>
 
                 {/* CLIENT */}
                 <div className="col-span-3 space-y-1">
+                  <div className="md:hidden text-[10px] font-bold text-slate-400 uppercase tracking-wider">Client Info</div>
                   <div className="flex items-center space-x-2">
                     {/* Star Badge */}
                     <div className="relative flex items-center justify-center flex-shrink-0">
@@ -291,12 +295,16 @@ export default function Leads() {
                 </div>
 
                 {/* SERVICES */}
-                <div className="col-span-3 text-sm text-slate-700 font-bold">
-                  {getServiceDisplayName(lead.productLine)}
+                <div className="col-span-3 space-y-1">
+                  <div className="md:hidden text-[10px] font-bold text-slate-400 uppercase tracking-wider">Service</div>
+                  <div className="text-sm text-slate-700 font-bold">
+                    {getServiceDisplayName(lead.productLine)}
+                  </div>
                 </div>
 
                 {/* STATUS */}
-                <div className="col-span-2" onClick={(e) => e.stopPropagation()}>
+                <div className="col-span-2 space-y-1" onClick={(e) => e.stopPropagation()}>
+                  <div className="md:hidden text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status</div>
                   <div className="relative inline-block text-left">
                     <select
                       value={lead.leadStatus || 'NEW'}
@@ -319,45 +327,47 @@ export default function Leads() {
                 </div>
 
                 {/* FOLLOW-UP & ACTIONS */}
-                <div className="col-span-2 flex items-center justify-end space-x-3 relative" onClick={(e) => e.stopPropagation()}>
-                  {/* + Add Button */}
-                  <button
-                    onClick={() => {
-                      setSelectedLeadId(lead._id);
-                      setFollowUpModalOpen(true);
-                    }}
-                    className="inline-flex items-center text-xs font-bold text-slate-700 hover:text-slate-900 border border-slate-200 bg-white hover:bg-slate-50 px-2.5 py-1.5 rounded-lg shadow-sm transition-all"
-                  >
-                    + Add
-                  </button>
-
-                  {/* Assignee Initials */}
-                  {lead.ownerName && lead.ownerName !== 'Unassigned' ? (
-                    <span
-                      className="w-7 h-7 rounded-full bg-[#EEEBFF] text-[#6366F1] text-xs font-black flex items-center justify-center border border-indigo-100 shadow-inner flex-shrink-0"
-                      title={`Assigned to: ${lead.ownerName}`}
-                    >
-                      {lead.ownerName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                    </span>
-                  ) : (
-                    <span
-                      className="w-7 h-7 rounded-full bg-slate-100 text-slate-500 text-xs font-black flex items-center justify-center border border-slate-200 shadow-inner flex-shrink-0"
-                      title="Unassigned"
-                    >
-                      UA
-                    </span>
-                  )}
-
-                  {/* Dot menu */}
-                  <div className="relative">
+                <div className="col-span-2 flex items-center justify-between md:justify-end space-x-3 w-full relative" onClick={(e) => e.stopPropagation()}>
+                  <div className="md:hidden text-[10px] font-bold text-slate-400 uppercase tracking-wider">Actions</div>
+                  <div className="flex items-center space-x-3">
+                    {/* + Add Button */}
                     <button
-                      onClick={() => setOpenMenuId(openMenuId === lead._id ? null : lead._id)}
-                      className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                      onClick={() => {
+                        setSelectedLeadId(lead._id);
+                        setFollowUpModalOpen(true);
+                      }}
+                      className="inline-flex items-center text-xs font-bold text-slate-700 hover:text-slate-900 border border-slate-200 bg-white hover:bg-slate-50 px-2.5 py-1.5 rounded-lg shadow-sm transition-all"
                     >
-                      <MoreVertical className="w-4 h-4" />
+                      + Add
                     </button>
-                    {openMenuId === lead._id && (
-                      <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-50">
+
+                    {/* Assignee Initials */}
+                    {lead.ownerName && lead.ownerName !== 'Unassigned' ? (
+                      <span
+                        className="w-7 h-7 rounded-full bg-[#EEEBFF] text-[#6366F1] text-xs font-black flex items-center justify-center border border-indigo-100 shadow-inner flex-shrink-0"
+                        title={`Assigned to: ${lead.ownerName}`}
+                      >
+                        {lead.ownerName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                      </span>
+                    ) : (
+                      <span
+                        className="w-7 h-7 rounded-full bg-slate-100 text-slate-500 text-xs font-black flex items-center justify-center border border-slate-200 shadow-inner flex-shrink-0"
+                        title="Unassigned"
+                      >
+                        UA
+                      </span>
+                    )}
+
+                    {/* Dot menu */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setOpenMenuId(openMenuId === lead._id ? null : lead._id)}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+                      {openMenuId === lead._id && (
+                        <div className="absolute right-0 bottom-full md:bottom-auto md:top-full mt-1 mb-1 md:mb-0 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-50">
                         <button onClick={() => { navigate(`/leads/${lead._id}/edit`); setOpenMenuId(null); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-sky-50 flex items-center">
                           <Edit className="w-3.5 h-3.5 mr-2 text-sky-600" /> Edit Lead
                         </button>

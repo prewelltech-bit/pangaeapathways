@@ -6,7 +6,7 @@ Role hierarchy:
   DIRECTOR → creates → BRANCH_ADMIN (in own country only)
   BRANCH_ADMIN → cannot create accounts
 """
-from fastapi import APIRouter, Response, Request, HTTPException, Depends
+from fastapi import APIRouter, Response, Request, HTTPException, Depends, BackgroundTasks
 from bson import ObjectId
 import os
 from datetime import datetime, timezone
@@ -315,29 +315,17 @@ def create_user_by_admin(
 # ─── Forgot Password / Reset Password ──────────────────────────────────────────
 
 @router.post("/forgot-password")
-def forgot_password(req: ForgotPasswordRequest, _rl=Depends(limiter.limit(3, 60))):
+def forgot_password(req: ForgotPasswordRequest, background_tasks: BackgroundTasks, _rl=Depends(limiter.limit(3, 60))):
+    from utils.email_utils import send_otp_email
+
     user = db.users.find_one({"email": req.email})
     if not user:
-        # We still return success to prevent email enumeration
+        # Return success to prevent email enumeration
         return {"message": "If an account exists, an OTP has been sent."}
-        
+
     otp = str(random.randint(100000, 999999))
-    # Try sending via real SMTP first
-    from utils.email_utils import send_otp_email
-    email_sent = send_otp_email(req.email, otp)
-    
-    if not email_sent:
-        if _IS_PRODUCTION:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to send OTP email. Please check your SMTP environment variables (SMTP_USER/SMTP_PASSWORD) on Render."
-            )
-        # Fallback for development/testing: print the OTP in the server console
-        print(f"\n========================================================")
-        print(f"[DEV FALLBACK] PASSWORD RESET OTP FOR {req.email} IS: {otp}")
-        print(f"========================================================\n")
-    
-    # Store OTP with a 15-minute expiration
+
+    # Store OTP in DB FIRST so it's ready before email is sent
     db.passwordResets.update_one(
         {"email": req.email},
         {
@@ -348,8 +336,17 @@ def forgot_password(req: ForgotPasswordRequest, _rl=Depends(limiter.limit(3, 60)
         },
         upsert=True
     )
-    # Ensure index exists for expiration (you can set a TTL index in DB, but we'll do manual check for now)
-    
+
+    # Send email in background — does NOT block the response (fixes 504 timeout)
+    def send_email_task(email: str, otp_code: str):
+        sent = send_otp_email(email, otp_code)
+        if not sent and not _IS_PRODUCTION:
+            print(f"\n========================================================")
+            print(f"[DEV FALLBACK] PASSWORD RESET OTP FOR {email} IS: {otp_code}")
+            print(f"========================================================\n")
+
+    background_tasks.add_task(send_email_task, req.email, otp)
+
     return {"message": "If an account exists, an OTP has been sent."}
 
 @router.post("/verify-reset-otp")

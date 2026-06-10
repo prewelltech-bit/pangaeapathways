@@ -393,7 +393,8 @@ export default function Leads() {
                   </div>
                 </div>
               </div>
-            ))
+            </div>
+          ))
           )}
         </div>
 

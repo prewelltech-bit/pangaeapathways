@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Search, Trash2, MoreVertical, Users, User, Download, Phone, Mail, Calendar, ChevronLeft, ChevronRight, Edit, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '../lib/AuthContext';
@@ -24,11 +24,14 @@ const formatSource = (src) => {
 };
 
 export default function Leads() {
+  const [searchParams] = useSearchParams();
+  const statusParam = searchParams.get('status');
+
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(statusParam || '');
   const [sourceFilter, setSourceFilter] = useState('');
   const [serviceFilter, setServiceFilter] = useState('');
   const [openMenuId, setOpenMenuId] = useState(null);
@@ -38,6 +41,15 @@ export default function Leads() {
   const perPage = 25;
   const { user, isCEO } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (statusParam !== null) {
+      setStatusFilter(statusParam);
+    } else {
+      setStatusFilter('');
+    }
+    setCurrentPage(1);
+  }, [statusParam]);
 
   useEffect(() => {
     fetchLeads(activeTab);

@@ -1,32 +1,30 @@
 import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import requests
 
 def send_otp_email(to_email: str, otp: str) -> bool:
     """
-    Sends an OTP email via Brevo SMTP relay (smtp-relay.brevo.com:587).
-    Returns True if sent successfully, False otherwise.
+    Sends an OTP email via Brevo's HTTP API (more reliable than SMTP).
+    Requires BREVO_API_KEY environment variable.
     """
-    smtp_host = os.environ.get("SMTP_HOST", "smtp-relay.brevo.com")
-    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
-    smtp_user = os.environ.get("SMTP_USER")
-    smtp_password = os.environ.get("SMTP_PASSWORD")
+    api_key = os.environ.get("BREVO_API_KEY")
+    from_email = os.environ.get("SMTP_FROM_EMAIL", "prewelltech@gmail.com")
+    from_name = "Pangaea Pathways CRM"
 
-    print(f"[SMTP DEBUG] Host={smtp_host}, Port={smtp_port}, User={smtp_user}, Password={'SET' if smtp_password else 'NOT SET'}")
+    print(f"[BREVO API] Sending OTP to {to_email} from {from_email}")
+    print(f"[BREVO API] API Key: {'SET' if api_key else 'NOT SET - add BREVO_API_KEY to Render!'}")
 
-    if not smtp_user or not smtp_password:
-        print("[WARNING] SMTP_USER or SMTP_PASSWORD not set. Cannot send email.")
+    if not api_key:
+        print("[ERROR] BREVO_API_KEY not set. Cannot send email.")
         return False
 
-    try:
-        msg = MIMEMultipart()
-        smtp_from = os.environ.get("SMTP_FROM_EMAIL", smtp_user)
-        msg['From'] = f"Pangaea Pathways CRM <{smtp_from}>"
-        msg['To'] = to_email
-        msg['Subject'] = "Pangaea Pathways CRM - Password Reset OTP"
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "api-key": api_key
+    }
 
-        body = f"""Hello,
+    body_text = f"""Hello,
 
 You requested a password reset for your Pangaea Pathways CRM account.
 
@@ -35,29 +33,26 @@ Your OTP code is: {otp}
 This code is valid for 15 minutes. If you did not request this, please ignore this email.
 
 Best regards,
-Pangaea Pathways Team
-"""
-        msg.attach(MIMEText(body, 'plain'))
+Pangaea Pathways Team"""
 
-        print(f"[SMTP DEBUG] Connecting to {smtp_host}:{smtp_port} via STARTTLS...")
-        server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
-        server.ehlo()
-        server.starttls()
-        server.ehlo()
-        print(f"[SMTP DEBUG] Logging in as {smtp_user}...")
-        server.login(smtp_user, smtp_password)
-        print(f"[SMTP DEBUG] Sending email to {to_email}...")
-        server.sendmail(smtp_from, to_email, msg.as_string())
-        server.quit()
-        print(f"[SUCCESS] OTP email sent successfully to {to_email} via Brevo SMTP.")
-        return True
+    payload = {
+        "sender": {"name": from_name, "email": from_email},
+        "to": [{"email": to_email}],
+        "subject": "Pangaea Pathways CRM - Password Reset OTP",
+        "textContent": body_text
+    }
 
-    except smtplib.SMTPAuthenticationError as e:
-        print(f"[ERROR] SMTP Auth failed: {e}")
-        return False
-    except smtplib.SMTPConnectError as e:
-        print(f"[ERROR] Cannot connect to {smtp_host}:{smtp_port} — {e}")
-        return False
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=15)
+        print(f"[BREVO API] Response: {response.status_code} - {response.text}")
+
+        if response.status_code == 201:
+            print(f"[SUCCESS] OTP email sent to {to_email} via Brevo API.")
+            return True
+        else:
+            print(f"[ERROR] Brevo API returned {response.status_code}: {response.text}")
+            return False
+
     except Exception as e:
-        print(f"[ERROR] Failed to send email to {to_email}: {type(e).__name__}: {e}")
+        print(f"[ERROR] Brevo API request failed: {type(e).__name__}: {e}")
         return False

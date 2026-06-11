@@ -47,7 +47,7 @@ Pangaea Pathways Team
         print(f"[SMTP DEBUG] Logging in as {smtp_user}...")
         server.login(smtp_user, smtp_password)
         print(f"[SMTP DEBUG] Sending email to {to_email}...")
-        server.sendmail(smtp_user, to_email, msg.as_string())
+        server.sendmail(smtp_from, to_email, msg.as_string())
         server.quit()
         print(f"[SUCCESS] OTP email sent successfully to {to_email} via Brevo SMTP.")
         return True

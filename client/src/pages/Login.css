@@ -152,6 +152,38 @@
     border-color: rgba(255, 255, 255, 0.5);
 }
 
+.login-input-password {
+    padding-right: 2.5rem;
+}
+
+.login-input-password-toggle {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: rgb(0, 0, 0);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+}
+
+.login-input-password-toggle:hover {
+    color: rgb(49, 59, 65);
+}
+
+.login-input-password-toggle.active {
+    color: #151d20; /* sky blue accent when visible */
+}
+
+.login-input-password-toggle.active:hover {
+    color: #3f4244;
+}
+
 .login-mfa-input {
     text-align: center;
     font-size: 1.5rem;

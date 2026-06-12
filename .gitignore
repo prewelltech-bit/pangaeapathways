@@ -5,10 +5,8 @@ dist/
 client/dist/
 
 # Environment configurations
-.env
 client/.env
 server/.env
-.env.*
 client/.env.*
 server/.env.*
 
@@ -37,7 +35,7 @@ lead_debug.txt
 temp_git_diff.txt
 
 # IDEs & System files
-.vscode/
 .idea/
 .DS_Store
 Thumbs.db
+config.bat

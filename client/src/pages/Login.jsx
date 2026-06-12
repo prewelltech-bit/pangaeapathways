@@ -2,24 +2,24 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
 import { GoogleLogin } from '@react-oauth/google';
-import { Lock, Mail, Shield, AlertCircle, KeyRound, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Lock, Mail, Shield, AlertCircle, KeyRound, ArrowLeft, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import logo from "../../../public/logo/PP.png";
 import axios from 'axios';
 import './Login.css';
 
 const parseErrorDetail = (detail) => {
-  if (!detail) return '';
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail)) {
-    return detail.map(d => {
-      const field = d.loc ? d.loc[d.loc.length - 1] : '';
-      return `${field ? field + ': ' : ''}${d.msg || JSON.stringify(d)}`;
-    }).join(', ');
-  }
-  if (typeof detail === 'object') {
-    return detail.message || detail.msg || JSON.stringify(detail);
-  }
-  return String(detail);
+    if (!detail) return '';
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+        return detail.map(d => {
+            const field = d.loc ? d.loc[d.loc.length - 1] : '';
+            return `${field ? field + ': ' : ''}${d.msg || JSON.stringify(d)}`;
+        }).join(', ');
+    }
+    if (typeof detail === 'object') {
+        return detail.message || detail.msg || JSON.stringify(detail);
+    }
+    return String(detail);
 };
 
 export default function Login() {
@@ -32,6 +32,8 @@ export default function Login() {
     const [error, setError] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
     const [loading, setLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showNewPassword, setShowNewPassword] = useState(false);
 
     const { login, googleLogin, verifyMfa } = useAuth();
     const navigate = useNavigate();
@@ -145,6 +147,8 @@ export default function Login() {
         setPassword('');
         setCode('');
         setNewPassword('');
+        setShowPassword(false);
+        setShowNewPassword(false);
     };
 
     return (
@@ -212,13 +216,28 @@ export default function Login() {
                             <div>
                                 <div className="flex justify-between items-center">
                                     <label className="login-label mb-0">Password</label>
-                                    <button type="button" onClick={() => setView('forgot-email')} className="text-xs font-semibold text-sky-600 hover:text-sky-800 transition-colors">
+                                    <button type="button" onClick={() => setView('forgot-email')} className="text-xs text-sky-100 hover:text-sky-100 transition-colors">
                                         Forgot Password?
                                     </button>
                                 </div>
                                 <div className="login-input-wrapper mt-1">
                                     <Lock size={16} className="login-input-icon" />
-                                    <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="login-input" placeholder="••••••••" />
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        required
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="login-input login-input-password"
+                                        placeholder="••••••••"
+                                    />
+                                    <button
+                                        type="button"
+                                        className={`login-input-password-toggle ${showPassword ? 'active' : ''}`}
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        tabIndex={-1}
+                                    >
+                                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
                                 </div>
                             </div>
 
@@ -306,7 +325,23 @@ export default function Login() {
                             <label className="login-label">New Password</label>
                             <div className="login-input-wrapper">
                                 <Lock size={16} className="login-input-icon" />
-                                <input type="password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" minLength={6} className="login-input" />
+                                <input
+                                    type={showNewPassword ? "text" : "password"}
+                                    required
+                                    value={newPassword}
+                                    onChange={(e) => setNewPassword(e.target.value)}
+                                    placeholder="••••••••"
+                                    minLength={6}
+                                    className="login-input login-input-password"
+                                />
+                                <button
+                                    type="button"
+                                    className={`login-input-password-toggle ${showNewPassword ? 'active' : ''}`}
+                                    onClick={() => setShowNewPassword(!showNewPassword)}
+                                    tabIndex={-1}
+                                >
+                                    {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
                             </div>
                         </div>
                         <button type="submit" disabled={loading} className="login-btn-primary mt-2">
